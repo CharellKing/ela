@@ -244,7 +244,6 @@ func (es *V8) BulkInsert(index string, hitDocs []Doc) error {
 			"index": map[string]interface{}{
 				"_index": index,
 				"_id":    doc.ID,
-				"_type":  doc.Type,
 			},
 		}
 		metaBytes, _ := json.Marshal(meta)

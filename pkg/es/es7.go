@@ -45,6 +45,31 @@ func (es *V7) GetClusterVersion() string {
 	return es.ClusterVersion
 }
 
+type ScrollResultV7 struct {
+	Took     int    `json:"took,omitempty"`
+	ScrollId string `json:"_scroll_id,omitempty"`
+	TimedOut bool   `json:"timed_out,omitempty"`
+	Hits     struct {
+		MaxScore float32 `json:"max_score,omitempty"`
+		Total    struct {
+			Value    int    `json:"value,omitempty"`
+			Relation string `json:"relation,omitempty"`
+		} `json:"total,omitempty"`
+		Docs []interface{} `json:"hits,omitempty"`
+	} `json:"hits"`
+	Shards struct {
+		Successful int `json:"successful,omitempty"`
+		Skipped    int `json:"skipped,omitempty"`
+		Failed     int `json:"failed,omitempty"`
+		Failures   []struct {
+			Shard  int         `json:"shard,omitempty"`
+			Index  string      `json:"index,omitempty"`
+			Status int         `json:"status,omitempty"`
+			Reason interface{} `json:"reason,omitempty"`
+		} `json:"failures,omitempty"`
+	} `json:"_shards,omitempty"`
+}
+
 func (es *V7) SearchByScroll(ctx context.Context, index string, query map[string]interface{}, sort string, size int,
 	yield func(*ScrollResultYield)) error {
 	scrollSearchOptions := []func(*esapi.SearchRequest){
@@ -76,7 +101,7 @@ func (es *V7) SearchByScroll(ctx context.Context, index string, query map[string
 		return errors.New(res.String())
 	}
 
-	var scrollResult ScrollResultV5
+	var scrollResult ScrollResultV7
 	if err := json.NewDecoder(res.Body).Decode(&scrollResult); err != nil {
 		return errors.WithStack(err)
 	}
@@ -97,7 +122,7 @@ func (es *V7) SearchByScroll(ctx context.Context, index string, query map[string
 	}
 
 	yield(&ScrollResultYield{
-		Total: uint64(scrollResult.Hits.Total),
+		Total: uint64(scrollResult.Hits.Total.Value),
 		Docs:  hitDocs,
 	})
 
@@ -117,7 +142,7 @@ func (es *V7) SearchByScroll(ctx context.Context, index string, query map[string
 				return errors.New(res.String())
 			}
 
-			var scrollResult ScrollResultV5
+			var scrollResult ScrollResultV7
 			if err := json.NewDecoder(res.Body).Decode(&scrollResult); err != nil {
 				return errors.WithStack(err)
 			}
@@ -135,7 +160,7 @@ func (es *V7) SearchByScroll(ctx context.Context, index string, query map[string
 			}
 
 			yield(&ScrollResultYield{
-				Total: uint64(scrollResult.Hits.Total),
+				Total: uint64(scrollResult.Hits.Total.Value),
 				Docs:  hitDocs,
 			})
 			return nil
@@ -218,7 +243,6 @@ func (es *V7) BulkInsert(index string, hitDocs []Doc) error {
 			"index": map[string]interface{}{
 				"_index": index,
 				"_id":    doc.ID,
-				"_type":  doc.Type,
 			},
 		}
 		metaBytes, _ := json.Marshal(meta)

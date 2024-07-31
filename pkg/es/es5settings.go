@@ -110,7 +110,7 @@ func (v5 *V5Settings) ToESV6Mapping(targetIndex string) map[string]interface{} {
 }
 
 func (v5 *V5Settings) ToESV7Mapping(targetIndex string) map[string]interface{} {
-	return v5.ToESV5Mapping(targetIndex)
+	return v5.ToESV8Mapping()
 }
 
 func (v5 *V5Settings) ToESV8Mapping() map[string]interface{} {

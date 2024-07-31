@@ -37,7 +37,10 @@ func main() {
 		utils.GetLogger(ctx).WithError(err).Error("create task manager")
 		return
 	}
-	taskMgr.Run(ctx)
+	if err := taskMgr.Run(ctx); err != nil {
+		utils.GetLogger(ctx).WithError(err).Error("run task manager")
+		return
+	}
 
 	return
 }

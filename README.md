@@ -48,6 +48,7 @@ tasks:  # tasks which is executed orderly.
     action: sync # index actions which can be assigned to 'sync', 'compare', 'sync_diff'. sync to insert data, compare to compare source index with target index, sync_diff to sync data between source index and target index.
     force: true       # force to cover the target index data with source index data and settings.
     scroll_size: 1000 # scroll size which is used to scroll data from source index.
+    scroll_time: 10   # scroll time which is used to scroll data from source index, default is 10 minutes.
     parallelism: 12   # parallelism which is used to sync data in parallel index pairs.
 
   - name: task2

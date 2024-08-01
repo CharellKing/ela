@@ -16,6 +16,7 @@ import (
 
 const defaultScrollSize = 1000
 const defaultParallelism = 12
+const defaultScrollTime = 10
 
 type BulkMigrator struct {
 	ctx context.Context

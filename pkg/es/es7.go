@@ -9,6 +9,7 @@ import (
 	"github.com/CharellKing/ela/config"
 	"github.com/CharellKing/ela/utils"
 	"github.com/mitchellh/mapstructure"
+	"github.com/spf13/cast"
 	"io"
 	"log"
 	"strings"
@@ -70,12 +71,12 @@ type ScrollResultV7 struct {
 	} `json:"_shards,omitempty"`
 }
 
-func (es *V7) SearchByScroll(ctx context.Context, index string, query map[string]interface{}, sort string, size int,
-	yield func(*ScrollResultYield)) error {
+func (es *V7) SearchByScroll(ctx context.Context, index string, query map[string]interface{},
+	sort string, scrollSize uint, scrollTime uint, yield func(*ScrollResultYield)) error {
 	scrollSearchOptions := []func(*esapi.SearchRequest){
 		es.Search.WithIndex(index),
-		es.Search.WithSize(size),
-		es.Search.WithScroll(time.Minute),
+		es.Search.WithSize(cast.ToInt(scrollSize)),
+		es.Search.WithScroll(cast.ToDuration(scrollTime) * time.Minute),
 	}
 
 	if len(query) > 0 {

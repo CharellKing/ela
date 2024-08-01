@@ -24,6 +24,7 @@ type Migrator struct {
 	IndexPair config.IndexPair
 
 	ScrollSize uint
+	ScrollTime uint
 }
 
 func NewMigrator(ctx context.Context, srcConfig *config.ESConfig, dstConfig *config.ESConfig) (*Migrator, error) {
@@ -44,6 +45,7 @@ func NewMigrator(ctx context.Context, srcConfig *config.ESConfig, dstConfig *con
 		SourceES:   srcES,
 		TargetES:   dstES,
 		ScrollSize: defaultScrollSize,
+		ScrollTime: defaultScrollTime,
 	}, nil
 }
 
@@ -70,6 +72,16 @@ func (m *Migrator) WithScrollSize(scrollSize uint) *Migrator {
 		TargetES:   m.TargetES,
 		IndexPair:  m.IndexPair,
 		ScrollSize: scrollSize,
+	}
+}
+
+func (m *Migrator) WithScrollTime(scrollTime uint) *Migrator {
+	return &Migrator{
+		SourceES:   m.SourceES,
+		TargetES:   m.TargetES,
+		IndexPair:  m.IndexPair,
+		ScrollSize: m.ScrollSize,
+		ScrollTime: scrollTime,
 	}
 }
 
@@ -124,7 +136,7 @@ func (m *Migrator) SyncDiff() ([3][]utils.HashDiff, error) {
 			},
 		}
 
-		if err := m.syncInsert(queryMap, cast.ToInt(m.ScrollSize)); err != nil {
+		if err := m.syncInsert(queryMap); err != nil {
 			return diffs, errors.WithStack(err)
 		}
 	}
@@ -148,7 +160,7 @@ func (m *Migrator) SyncDiff() ([3][]utils.HashDiff, error) {
 			},
 		}
 
-		if err := m.syncUpdate(queryMap, cast.ToInt(m.ScrollSize)); err != nil {
+		if err := m.syncUpdate(queryMap); err != nil {
 			return diffs, errors.WithStack(err)
 		}
 	}
@@ -161,7 +173,7 @@ func (m *Migrator) Compare() ([3][]utils.HashDiff, error) {
 
 	sourceCh := lo.Async(func() error {
 		var err error
-		sourceDocHashMap, err = m.getDocsHashValues(m.SourceES, m.IndexPair.SourceIndex, cast.ToInt(m.ScrollSize))
+		sourceDocHashMap, err = m.getDocsHashValues(m.SourceES, m.IndexPair.SourceIndex)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -170,7 +182,7 @@ func (m *Migrator) Compare() ([3][]utils.HashDiff, error) {
 
 	targetCh := lo.Async(func() error {
 		var err error
-		targetDocHashMap, err = m.getDocsHashValues(m.TargetES, m.IndexPair.TargetIndex, cast.ToInt(m.ScrollSize))
+		targetDocHashMap, err = m.getDocsHashValues(m.TargetES, m.IndexPair.TargetIndex)
 		if err != nil {
 			return errors.WithStack(err)
 		}
@@ -186,12 +198,12 @@ func (m *Migrator) Sync(force bool) error {
 	if err := m.CopyIndexSettings(force); err != nil {
 		return errors.WithStack(err)
 	}
-	return m.syncInsert(nil, cast.ToInt(m.ScrollSize))
+	return m.syncInsert(nil)
 }
 
-func (m *Migrator) syncInsert(query map[string]interface{}, size int) error {
+func (m *Migrator) syncInsert(query map[string]interface{}) error {
 	for v := range lo.Generator(1, func(yield func(*es2.ScrollResultYield)) {
-		if err := m.SourceES.SearchByScroll(m.GetCtx(), m.IndexPair.SourceIndex, query, "", size, yield); err != nil {
+		if err := m.SourceES.SearchByScroll(m.GetCtx(), m.IndexPair.SourceIndex, query, "", m.ScrollSize, m.ScrollTime, yield); err != nil {
 			utils.GetLogger(m.ctx).WithError(err).Error("search scroll")
 		}
 	}) {
@@ -204,9 +216,9 @@ func (m *Migrator) syncInsert(query map[string]interface{}, size int) error {
 	return nil
 }
 
-func (m *Migrator) syncUpdate(query map[string]interface{}, size int) error {
+func (m *Migrator) syncUpdate(query map[string]interface{}) error {
 	for v := range lo.Generator(1, func(yield func(*es2.ScrollResultYield)) {
-		if err := m.SourceES.SearchByScroll(m.GetCtx(), m.IndexPair.SourceIndex, query, "", size, yield); err != nil {
+		if err := m.SourceES.SearchByScroll(m.GetCtx(), m.IndexPair.SourceIndex, query, "", m.ScrollSize, m.ScrollTime, yield); err != nil {
 			utils.GetLogger(m.GetCtx()).WithError(err).Error("search by scroll")
 		}
 	}) {
@@ -226,10 +238,10 @@ func (m *Migrator) syncDelete(hitDocs []es2.Doc) error {
 	return nil
 }
 
-func (m *Migrator) getDocsHashValues(esInstance es2.ES, index string, size int) (map[string]*utils.DocHash, error) {
+func (m *Migrator) getDocsHashValues(esInstance es2.ES, index string) (map[string]*utils.DocHash, error) {
 	docHashMap := make(map[string]*utils.DocHash)
 	for v := range lo.Generator(1, func(yield func(*es2.ScrollResultYield)) {
-		if err := esInstance.SearchByScroll(m.GetCtx(), index, nil, "", size, yield); err != nil {
+		if err := esInstance.SearchByScroll(m.GetCtx(), index, nil, "", m.ScrollSize, m.ScrollTime, yield); err != nil {
 			utils.GetLogger(m.ctx).WithError(err).Error("search by scroll")
 		}
 	}) {

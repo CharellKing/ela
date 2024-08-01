@@ -18,6 +18,7 @@ type TaskCfg struct {
 	TaskAction   TaskAction   `mapstructure:"action"`
 	Force        bool         `mapstructure:"force"`
 	ScrollSize   uint         `mapstructure:"scroll_size"`
+	ScrollTime   uint         `mapstructure:"scroll_time"`
 	Parallelism  uint         `mapstructure:"parallelism"`
 }
 

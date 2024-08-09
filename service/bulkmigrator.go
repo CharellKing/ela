@@ -31,6 +31,8 @@ type BulkMigrator struct {
 	Error error
 
 	ScrollSize uint
+
+	ScrollTime uint
 }
 
 func NewBulkMigratorWithES(ctx context.Context, sourceES, targetES es2.ES) *BulkMigrator {
@@ -45,6 +47,7 @@ func NewBulkMigratorWithES(ctx context.Context, sourceES, targetES es2.ES) *Bulk
 		IndexPairMap: make(map[string]*config.IndexPair),
 		Error:        nil,
 		ScrollSize:   defaultScrollSize,
+		ScrollTime:   defaultScrollTime,
 	}
 }
 
@@ -83,6 +86,7 @@ func (m *BulkMigrator) WithIndexPairs(indexPairs ...*config.IndexPair) *BulkMigr
 		IndexPairMap: m.IndexPairMap,
 		Error:        m.Error,
 		ScrollSize:   m.ScrollSize,
+		ScrollTime:   m.ScrollTime,
 	}
 
 	newIndexPairsMap := make(map[string]*config.IndexPair)
@@ -115,6 +119,27 @@ func (m *BulkMigrator) WithScrollSize(scrollSize uint) *BulkMigrator {
 		IndexPairMap: m.IndexPairMap,
 		Error:        m.Error,
 		ScrollSize:   scrollSize,
+		ScrollTime:   m.ScrollTime,
+	}
+}
+
+func (m *BulkMigrator) WithScrollTime(scrollTime uint) *BulkMigrator {
+	if m.Error != nil {
+		return m
+	}
+
+	if scrollTime == 0 {
+		scrollTime = defaultScrollTime
+	}
+	return &BulkMigrator{
+		ctx:          m.ctx,
+		SourceES:     m.SourceES,
+		TargetES:     m.TargetES,
+		Parallelism:  m.Parallelism,
+		IndexPairMap: m.IndexPairMap,
+		Error:        m.Error,
+		ScrollSize:   m.ScrollSize,
+		ScrollTime:   scrollTime,
 	}
 }
 
@@ -298,6 +323,7 @@ func (m *BulkMigrator) parallelRun(callback func(migrator *Migrator)) {
 			TargetES:   m.TargetES,
 			IndexPair:  *indexPair,
 			ScrollSize: m.ScrollSize,
+			ScrollTime: m.ScrollTime,
 		}
 		pool.Submit(func() {
 			callback(newMigrator)

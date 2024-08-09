@@ -57,7 +57,8 @@ tasks:  # tasks which is executed orderly.
     index_pairs:
       - source_index: "sample_hello"
         target_index: "sample_hello"
-    action: compare
+    action: sync
+    force: true
 
   - name: task3
     source_es: es5
@@ -66,7 +67,7 @@ tasks:  # tasks which is executed orderly.
       -
         source_index: "sample_hello"
         target_index: "sample_hello"
-    action: sync
+    action: compare
     force: true
 
   - name: task3

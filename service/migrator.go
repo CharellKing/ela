@@ -42,6 +42,7 @@ func NewMigrator(ctx context.Context, srcConfig *config.ESConfig, dstConfig *con
 	ctx = utils.SetCtxKeyTargetESVersion(ctx, dstES.GetClusterVersion())
 
 	return &Migrator{
+		ctx:        ctx,
 		SourceES:   srcES,
 		TargetES:   dstES,
 		ScrollSize: defaultScrollSize,
@@ -63,20 +64,24 @@ func (m *Migrator) WithIndexPair(indexPair config.IndexPair) *Migrator {
 		TargetES:   m.TargetES,
 		IndexPair:  indexPair,
 		ScrollSize: m.ScrollSize,
+		ScrollTime: m.ScrollTime,
 	}
 }
 
 func (m *Migrator) WithScrollSize(scrollSize uint) *Migrator {
 	return &Migrator{
+		ctx:        m.ctx,
 		SourceES:   m.SourceES,
 		TargetES:   m.TargetES,
 		IndexPair:  m.IndexPair,
 		ScrollSize: scrollSize,
+		ScrollTime: m.ScrollTime,
 	}
 }
 
 func (m *Migrator) WithScrollTime(scrollTime uint) *Migrator {
 	return &Migrator{
+		ctx:        m.ctx,
 		SourceES:   m.SourceES,
 		TargetES:   m.TargetES,
 		IndexPair:  m.IndexPair,

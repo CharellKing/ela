@@ -169,12 +169,14 @@ func (m *BulkMigrator) WithPatternIndexes(pattern string) *BulkMigrator {
 	}
 
 	newBulkMigrator := &BulkMigrator{
+		ctx:          m.ctx,
 		SourceES:     m.SourceES,
 		TargetES:     m.TargetES,
 		Parallelism:  m.Parallelism,
 		IndexPairMap: m.IndexPairMap,
 		Error:        m.Error,
 		ScrollSize:   m.ScrollSize,
+		ScrollTime:   m.ScrollTime,
 	}
 
 	var filterIndexes []string
@@ -183,7 +185,7 @@ func (m *BulkMigrator) WithPatternIndexes(pattern string) *BulkMigrator {
 		return newBulkMigrator
 	}
 
-	var newIndexPairsMap map[string]*config.IndexPair
+	newIndexPairsMap := make(map[string]*config.IndexPair)
 	for _, index := range filterIndexes {
 		indexPair := &config.IndexPair{
 			SourceIndex: index,

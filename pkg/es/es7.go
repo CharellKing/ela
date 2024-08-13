@@ -294,12 +294,12 @@ func (es *V7) CreateIndex(esSetting IESSettings) error {
 
 func (es *V7) IndexExisted(indexName string) (bool, error) {
 	res, err := es.Client.Indices.Exists([]string{indexName})
-	if res.StatusCode == 404 {
-		return false, nil
-	}
-
 	if err != nil {
 		return false, errors.WithStack(err)
+	}
+
+	if res.StatusCode == 404 {
+		return false, nil
 	}
 
 	defer func() {

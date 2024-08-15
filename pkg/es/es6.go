@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"github.com/CharellKing/ela/config"
@@ -12,6 +13,7 @@ import (
 	"github.com/spf13/cast"
 	"io"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
@@ -27,11 +29,19 @@ type V6 struct {
 }
 
 func NewESV6(esConfig *config.ESConfig, clusterVersion string) (*V6, error) {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	}
+
 	client, err := elasticsearch6.NewClient(elasticsearch6.Config{
 		Addresses: esConfig.Addresses,
 		Username:  esConfig.User,
 		Password:  esConfig.Password,
+		Transport: transport,
 	})
+
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

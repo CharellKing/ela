@@ -79,7 +79,7 @@ type ScrollResultV5 struct {
 }
 
 func (es *V5) SearchByScroll(ctx context.Context, index string, query map[string]interface{},
-	sort string, scrollSize uint, scrollTime uint, yield func(*ScrollResultYield)) error {
+	sortFields []string, scrollSize uint, scrollTime uint, yield func(*ScrollResultYield)) error {
 	scrollSearchOptions := []func(*esapi.SearchRequest){
 		es.Search.WithIndex(index),
 		es.Search.WithSize(cast.ToInt(scrollSize)),
@@ -92,8 +92,8 @@ func (es *V5) SearchByScroll(ctx context.Context, index string, query map[string
 		scrollSearchOptions = append(scrollSearchOptions, es.Client.Search.WithBody(&buf))
 	}
 
-	if lo.IsNotEmpty(sort) {
-		scrollSearchOptions = append(scrollSearchOptions, es.Client.Search.WithSort(sort))
+	if len(sortFields) > 0 {
+		scrollSearchOptions = append(scrollSearchOptions, es.Client.Search.WithSort(sortFields...))
 	}
 
 	res, err := es.Client.Search(scrollSearchOptions...)

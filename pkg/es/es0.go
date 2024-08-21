@@ -28,7 +28,7 @@ type ES interface {
 	IndexExisted(index string) (bool, error)
 	GetIndexes() ([]string, error)
 	SearchByScroll(ctx context.Context, index string, query map[string]interface{},
-		sort string, scrollSize uint, scrollTime uint, yield func(*ScrollResultYield)) error
+		sortFields []string, scrollSize uint, scrollTime uint, yield func(*ScrollResultYield)) error
 
 	BulkInsert(index string, hitDocs []Doc) error
 	BulkUpdate(index string, hitDocs []Doc) error

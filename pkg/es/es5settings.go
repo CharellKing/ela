@@ -23,7 +23,7 @@ func NewV5Settings(settings, mappings map[string]interface{}, sourceIndex string
 	}
 }
 
-func (v5 *V5Settings) getUnwrappedSettings(targetIndex string) map[string]interface{} {
+func (v5 *V5Settings) getUnwrappedSettings(_ string) map[string]interface{} {
 	var copySourceSettings map[string]interface{}
 	_ = copier.Copy(&copySourceSettings, v5.Settings)
 
@@ -98,7 +98,7 @@ func (v5 *V5Settings) mergeUnWrappedMapping(unwrappedMappings map[string]interfa
 	}
 }
 
-func (v5 *V5Settings) ToESV5Mapping(targetIndex string) map[string]interface{} {
+func (v5 *V5Settings) ToESV5Mapping(_ string) map[string]interface{} {
 	unwrappedMappings := v5.getUnwrappedMappings()
 	return map[string]interface{}{
 		"mappings": unwrappedMappings,
@@ -109,7 +109,7 @@ func (v5 *V5Settings) ToESV6Mapping(targetIndex string) map[string]interface{} {
 	return v5.ToESV5Mapping(targetIndex)
 }
 
-func (v5 *V5Settings) ToESV7Mapping(targetIndex string) map[string]interface{} {
+func (v5 *V5Settings) ToESV7Mapping(_ string) map[string]interface{} {
 	return v5.ToESV8Mapping()
 }
 
@@ -159,4 +159,8 @@ func (v5 *V5Settings) GetMappings() map[string]interface{} {
 
 func (v5 *V5Settings) GetSettings() map[string]interface{} {
 	return v5.Settings
+}
+
+func (v5 *V5Settings) GetProperties() map[string]interface{} {
+	return v5.mergeUnWrappedMapping(v5.getUnwrappedMappings())
 }

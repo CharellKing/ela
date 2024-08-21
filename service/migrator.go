@@ -172,31 +172,202 @@ func (m *Migrator) SyncDiff() ([3][]utils.HashDiff, error) {
 	return diffs, nil
 }
 
+func (m *Migrator) getESIndexFields(es es2.ES) (map[string]interface{}, error) {
+	esSettings, err := es.GetIndexMappingAndSetting(m.IndexPair.SourceIndex)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	propertiesMap := esSettings.GetProperties()
+
+	return cast.ToStringMap(propertiesMap["properties"]), nil
+}
+
+func (m *Migrator) getKeywordFields() ([]string, error) {
+	sourceEsFieldMap, err := m.getESIndexFields(m.SourceES)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	targetEsFieldMap, err := m.getESIndexFields(m.TargetES)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	var keywordFields []string
+	for fieldName, fieldAttrs := range sourceEsFieldMap {
+		if _, ok := targetEsFieldMap[fieldName]; !ok {
+			continue
+		}
+
+		fieldAttrMap := cast.ToStringMap(fieldAttrs)
+		fieldType := cast.ToString(fieldAttrMap["type"])
+		if fieldType == "keyword" {
+			keywordFields = append(keywordFields, fieldName)
+			continue
+		}
+	}
+
+	return keywordFields, nil
+}
+
+func (m *Migrator) getDocHashMap(result *es2.ScrollResultYield, keywordFields []string) (map[string]*utils.DocHash, []string) {
+	var lastKeywordFieldValues []string
+	docHashMap := make(map[string]*utils.DocHash)
+	for idx, doc := range result.Docs {
+		jsonData, _ := json.Marshal(doc.Source)
+		hash := md5.Sum(jsonData)
+		docHashMap[doc.ID] = &utils.DocHash{
+			ID:   doc.ID,
+			Type: doc.Type,
+			Hash: hex.EncodeToString(hash[:]),
+		}
+
+		if idx == len(result.Docs)-1 {
+			for _, field := range keywordFields {
+				lastKeywordFieldValues = append(lastKeywordFieldValues, cast.ToString(doc.Source[field]))
+			}
+		}
+	}
+	return docHashMap, lastKeywordFieldValues
+}
+
+func (m *Migrator) compareSortableFieldValues(lastSourceSortFieldValues []string, lastTargetSortFieldValues []string) int {
+	for idx, sourceValue := range lastSourceSortFieldValues {
+		ret := strings.Compare(sourceValue, lastTargetSortFieldValues[idx])
+		if ret != 0 {
+			return ret
+		}
+	}
+	return 0
+}
+
+func (m *Migrator) compare(keywordFields []string) ([3][]utils.HashDiff, int) {
+	sourceCh := lo.Generator(1, func(yield func(*es2.ScrollResultYield)) {
+		if err := m.SourceES.SearchByScroll(m.GetCtx(), m.IndexPair.SourceIndex, nil, keywordFields, m.ScrollSize, m.ScrollTime, yield); err != nil {
+			utils.GetLogger(m.ctx).WithError(err).Error("search scroll")
+		}
+	})
+
+	targetCh := lo.Generator(1, func(yield func(*es2.ScrollResultYield)) {
+		if err := m.TargetES.SearchByScroll(m.GetCtx(), m.IndexPair.TargetIndex, nil, keywordFields, m.ScrollSize, m.ScrollTime, yield); err != nil {
+			utils.GetLogger(m.ctx).WithError(err).Error("search scroll")
+		}
+	})
+
+	var (
+		sourceOk bool
+		targetOk bool
+
+		lastSourceSortFieldValues []string
+		lastTargetSortFieldValues []string
+
+		sourceDocHashMap = make(map[string]*utils.DocHash)
+		targetDocHashMap = make(map[string]*utils.DocHash)
+
+		diffs [3][]utils.HashDiff
+
+		sameCount int
+	)
+
+	for {
+		var (
+			sourceResult *es2.ScrollResultYield
+			targetResult *es2.ScrollResultYield
+		)
+
+		compareRet := m.compareSortableFieldValues(lastSourceSortFieldValues, lastTargetSortFieldValues)
+		if compareRet < 0 {
+			sourceResult, sourceOk = <-sourceCh
+		} else if compareRet > 0 {
+			targetResult, targetOk = <-targetCh
+		} else {
+			sourceResult, sourceOk = <-sourceCh
+			targetResult, targetOk = <-targetCh
+		}
+
+		if !sourceOk && !targetOk {
+			break
+		}
+
+		var subSourceDocHashMap map[string]*utils.DocHash
+		if sourceResult != nil && len(sourceResult.Docs) > 0 {
+			subSourceDocHashMap, lastSourceSortFieldValues = m.getDocHashMap(sourceResult, keywordFields)
+		}
+
+		var subTargetDocHashMap map[string]*utils.DocHash
+		if targetResult != nil && len(targetResult.Docs) > 0 {
+			subTargetDocHashMap, lastTargetSortFieldValues = m.getDocHashMap(targetResult, keywordFields)
+		}
+
+		for id, docHash := range subSourceDocHashMap {
+			if _, ok := targetDocHashMap[id]; !ok {
+				if _, ok = subTargetDocHashMap[id]; !ok {
+					sourceDocHashMap[id] = docHash
+				} else {
+					if docHash.Hash != subTargetDocHashMap[id].Hash {
+						diffs[2] = append(diffs[2], utils.HashDiff{
+							Action:          utils.ActionTypeModify,
+							Id:              id,
+							Type:            docHash.Type,
+							SourceHashValue: docHash.Hash,
+							TargetHashValue: subTargetDocHashMap[id].Hash,
+						})
+					} else {
+						sameCount++
+					}
+					delete(subTargetDocHashMap, id)
+				}
+			} else {
+				if docHash.Hash != targetDocHashMap[id].Hash {
+					diffs[2] = append(diffs[2], utils.HashDiff{
+						Action:          utils.ActionTypeModify,
+						Id:              id,
+						Type:            docHash.Type,
+						SourceHashValue: docHash.Hash,
+						TargetHashValue: targetDocHashMap[id].Hash,
+					})
+				} else {
+					sameCount++
+				}
+				delete(targetDocHashMap, id)
+			}
+		}
+
+		for id, docHash := range subTargetDocHashMap {
+			if _, ok := sourceDocHashMap[id]; !ok {
+				targetDocHashMap[id] = docHash
+			} else {
+				if docHash.Hash != sourceDocHashMap[id].Hash {
+					diffs[2] = append(diffs[2], utils.HashDiff{
+						Action:          utils.ActionTypeModify,
+						Id:              id,
+						Type:            docHash.Type,
+						SourceHashValue: sourceDocHashMap[id].Hash,
+						TargetHashValue: docHash.Hash,
+					})
+				} else {
+					sameCount++
+				}
+				delete(sourceDocHashMap, id)
+			}
+		}
+	}
+	return diffs, sameCount
+}
+
 func (m *Migrator) Compare() ([3][]utils.HashDiff, error) {
-	sourceDocHashMap := make(map[string]*utils.DocHash)
-	targetDocHashMap := make(map[string]*utils.DocHash)
+	keywordFields, err := m.getKeywordFields()
+	if err != nil {
+		return [3][]utils.HashDiff{}, errors.WithStack(err)
+	}
 
-	sourceCh := lo.Async(func() error {
-		var err error
-		sourceDocHashMap, err = m.getDocsHashValues(m.SourceES, m.IndexPair.SourceIndex)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		return nil
-	})
+	diffs, sameCount := m.compare(keywordFields)
 
-	targetCh := lo.Async(func() error {
-		var err error
-		targetDocHashMap, err = m.getDocsHashValues(m.TargetES, m.IndexPair.TargetIndex)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		return nil
-	})
-
-	<-sourceCh
-	<-targetCh
-	return utils.CompareMap(sourceDocHashMap, targetDocHashMap), nil
+	total := len(diffs[0]) + len(diffs[1]) + len(diffs[2]) + sameCount
+	utils.GetLogger(m.ctx).Infof("compare total (%d), add(%d), delete(%d), modified(%d), same(%d)",
+		total, len(diffs[0]), len(diffs[1]), len(diffs[2]), sameCount)
+	return diffs, nil
 }
 
 func (m *Migrator) Sync(force bool) error {
@@ -208,7 +379,7 @@ func (m *Migrator) Sync(force bool) error {
 
 func (m *Migrator) syncInsert(query map[string]interface{}) error {
 	for v := range lo.Generator(1, func(yield func(*es2.ScrollResultYield)) {
-		if err := m.SourceES.SearchByScroll(m.GetCtx(), m.IndexPair.SourceIndex, query, "", m.ScrollSize, m.ScrollTime, yield); err != nil {
+		if err := m.SourceES.SearchByScroll(m.GetCtx(), m.IndexPair.SourceIndex, query, nil, m.ScrollSize, m.ScrollTime, yield); err != nil {
 			utils.GetLogger(m.ctx).WithError(err).Error("search scroll")
 		}
 	}) {
@@ -223,7 +394,7 @@ func (m *Migrator) syncInsert(query map[string]interface{}) error {
 
 func (m *Migrator) syncUpdate(query map[string]interface{}) error {
 	for v := range lo.Generator(1, func(yield func(*es2.ScrollResultYield)) {
-		if err := m.SourceES.SearchByScroll(m.GetCtx(), m.IndexPair.SourceIndex, query, "", m.ScrollSize, m.ScrollTime, yield); err != nil {
+		if err := m.SourceES.SearchByScroll(m.GetCtx(), m.IndexPair.SourceIndex, query, nil, m.ScrollSize, m.ScrollTime, yield); err != nil {
 			utils.GetLogger(m.GetCtx()).WithError(err).Error("search by scroll")
 		}
 	}) {
@@ -246,7 +417,7 @@ func (m *Migrator) syncDelete(hitDocs []es2.Doc) error {
 func (m *Migrator) getDocsHashValues(esInstance es2.ES, index string) (map[string]*utils.DocHash, error) {
 	docHashMap := make(map[string]*utils.DocHash)
 	for v := range lo.Generator(1, func(yield func(*es2.ScrollResultYield)) {
-		if err := esInstance.SearchByScroll(m.GetCtx(), index, nil, "", m.ScrollSize, m.ScrollTime, yield); err != nil {
+		if err := esInstance.SearchByScroll(m.GetCtx(), index, nil, nil, m.ScrollSize, m.ScrollTime, yield); err != nil {
 			utils.GetLogger(m.ctx).WithError(err).Error("search by scroll")
 		}
 	}) {

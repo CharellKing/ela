@@ -125,11 +125,11 @@ func (es *V7) SearchByScroll(ctx context.Context, index string, query map[string
 		}
 	}()
 
-	var hitDocs []Doc
+	var hitDocs []*Doc
 	for _, hit := range scrollResult.Hits.Docs {
 		var hitDoc Doc
 		_ = mapstructure.Decode(hit, &hitDoc)
-		hitDocs = append(hitDocs, hitDoc)
+		hitDocs = append(hitDocs, &hitDoc)
 	}
 
 	yield(&ScrollResultYield{
@@ -163,11 +163,11 @@ func (es *V7) SearchByScroll(ctx context.Context, index string, query map[string
 				return nil
 			}
 
-			var hitDocs []Doc
+			var hitDocs []*Doc
 			for _, hit := range scrollResult.Hits.Docs {
 				var hitDoc Doc
 				_ = mapstructure.Decode(hit, &hitDoc)
-				hitDocs = append(hitDocs, hitDoc)
+				hitDocs = append(hitDocs, &hitDoc)
 			}
 
 			yield(&ScrollResultYield{
@@ -247,7 +247,7 @@ func (es *V7) GetIndexSettings(index string) (map[string]interface{}, error) {
 	return indexSetting, nil
 }
 
-func (es *V7) BulkInsert(index string, hitDocs []Doc) error {
+func (es *V7) BulkInsert(index string, hitDocs []*Doc) error {
 	var buf bytes.Buffer
 	for _, doc := range hitDocs {
 		meta := map[string]interface{}{
@@ -340,7 +340,7 @@ func (es *V7) DeleteIndex(index string) error {
 	return nil
 }
 
-func (es *V7) BulkUpdate(index string, hitDocs []Doc) error {
+func (es *V7) BulkUpdate(index string, hitDocs []*Doc) error {
 	var buf bytes.Buffer
 
 	for _, doc := range hitDocs {
@@ -388,7 +388,7 @@ func (es *V7) BulkUpdate(index string, hitDocs []Doc) error {
 	return nil
 }
 
-func (es *V7) BulkDelete(index string, hitDocs []Doc) error {
+func (es *V7) BulkDelete(index string, hitDocs []*Doc) error {
 	var buf bytes.Buffer
 
 	for _, doc := range hitDocs {

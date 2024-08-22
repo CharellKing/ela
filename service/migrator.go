@@ -11,6 +11,7 @@ import (
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
 	"github.com/samber/lo"
+	lop "github.com/samber/lo/parallel"
 	"github.com/spf13/cast"
 	"strings"
 )
@@ -112,10 +113,10 @@ func (m *Migrator) CopyIndexSettings(force bool) error {
 	return nil
 }
 
-func (m *Migrator) ConvertHashDiffToDocs(diffs []utils.HashDiff) []es2.Doc {
-	var docs []es2.Doc
+func (m *Migrator) ConvertHashDiffToDocs(diffs []utils.HashDiff) []*es2.Doc {
+	var docs []*es2.Doc
 	for _, diff := range diffs {
-		docs = append(docs, es2.Doc{
+		docs = append(docs, &es2.Doc{
 			ID:   diff.Id,
 			Type: diff.Type,
 		})
@@ -213,20 +214,25 @@ func (m *Migrator) getKeywordFields() ([]string, error) {
 
 func (m *Migrator) getDocHashMap(result *es2.ScrollResultYield, keywordFields []string) (map[string]*utils.DocHash, []string) {
 	var lastKeywordFieldValues []string
-	docHashMap := make(map[string]*utils.DocHash)
-	for idx, doc := range result.Docs {
+
+	docHashArray := lop.Map(result.Docs, func(doc *es2.Doc, _ int) *utils.DocHash {
 		jsonData, _ := json.Marshal(doc.Source)
 		hash := md5.Sum(jsonData)
-		docHashMap[doc.ID] = &utils.DocHash{
+		return &utils.DocHash{
 			ID:   doc.ID,
 			Type: doc.Type,
 			Hash: hex.EncodeToString(hash[:]),
 		}
+	})
 
-		if idx == len(result.Docs)-1 {
-			for _, field := range keywordFields {
-				lastKeywordFieldValues = append(lastKeywordFieldValues, cast.ToString(doc.Source[field]))
-			}
+	docHashMap := lo.Associate(docHashArray, func(docHash *utils.DocHash) (string, *utils.DocHash) {
+		return docHash.ID, docHash
+	})
+
+	if len(result.Docs) > 0 {
+		lastDoc := result.Docs[len(result.Docs)-1]
+		for _, field := range keywordFields {
+			lastKeywordFieldValues = append(lastKeywordFieldValues, cast.ToString(lastDoc.Source[field]))
 		}
 	}
 	return docHashMap, lastKeywordFieldValues
@@ -420,7 +426,7 @@ func (m *Migrator) syncUpdate(query map[string]interface{}) error {
 	return nil
 }
 
-func (m *Migrator) syncDelete(hitDocs []es2.Doc) error {
+func (m *Migrator) syncDelete(hitDocs []*es2.Doc) error {
 	if err := m.TargetES.BulkDelete(m.IndexPair.TargetIndex, hitDocs); err != nil {
 		return errors.WithStack(err)
 	}

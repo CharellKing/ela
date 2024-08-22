@@ -14,7 +14,7 @@ import (
 
 type ScrollResultYield struct {
 	Total uint64
-	Docs  []Doc
+	Docs  []*Doc
 }
 
 type Doc struct {
@@ -30,9 +30,9 @@ type ES interface {
 	SearchByScroll(ctx context.Context, index string, query map[string]interface{},
 		sortFields []string, scrollSize uint, scrollTime uint, yield func(*ScrollResultYield)) error
 
-	BulkInsert(index string, hitDocs []Doc) error
-	BulkUpdate(index string, hitDocs []Doc) error
-	BulkDelete(index string, hitDocs []Doc) error
+	BulkInsert(index string, hitDocs []*Doc) error
+	BulkUpdate(index string, hitDocs []*Doc) error
+	BulkDelete(index string, hitDocs []*Doc) error
 	GetIndexMappingAndSetting(index string) (IESSettings, error)
 
 	CreateIndex(esSetting IESSettings) error

@@ -242,7 +242,7 @@ func (m *Migrator) compareSortableFieldValues(lastSourceSortFieldValues []string
 	return 0
 }
 
-func (m *Migrator) compare(keywordFields []string) ([3][]utils.HashDiff, int) {
+func (m *Migrator) compare(keywordFields []string) ([3][]utils.HashDiff, uint64) {
 	sourceCh := lo.Generator(1, func(yield func(*es2.ScrollResultYield)) {
 		if err := m.SourceES.SearchByScroll(m.GetCtx(), m.IndexPair.SourceIndex, nil, keywordFields, m.ScrollSize, m.ScrollTime, yield); err != nil {
 			utils.GetLogger(m.ctx).WithError(err).Error("search scroll")
@@ -267,7 +267,11 @@ func (m *Migrator) compare(keywordFields []string) ([3][]utils.HashDiff, int) {
 
 		diffs [3][]utils.HashDiff
 
-		sameCount int
+		sameCount   uint64
+		sourceCount uint64
+		targetCount uint64
+		sourceTotal uint64
+		targetTotal uint64
 	)
 
 	for {
@@ -293,11 +297,15 @@ func (m *Migrator) compare(keywordFields []string) ([3][]utils.HashDiff, int) {
 		var subSourceDocHashMap map[string]*utils.DocHash
 		if sourceResult != nil && len(sourceResult.Docs) > 0 {
 			subSourceDocHashMap, lastSourceSortFieldValues = m.getDocHashMap(sourceResult, keywordFields)
+			sourceCount += cast.ToUint64(len(sourceResult.Docs))
+			sourceTotal = sourceResult.Total
 		}
 
 		var subTargetDocHashMap map[string]*utils.DocHash
 		if targetResult != nil && len(targetResult.Docs) > 0 {
 			subTargetDocHashMap, lastTargetSortFieldValues = m.getDocHashMap(targetResult, keywordFields)
+			targetCount += cast.ToUint64(len(targetResult.Docs))
+			targetTotal = targetResult.Total
 		}
 
 		for id, docHash := range subSourceDocHashMap {
@@ -352,6 +360,11 @@ func (m *Migrator) compare(keywordFields []string) ([3][]utils.HashDiff, int) {
 				delete(sourceDocHashMap, id)
 			}
 		}
+
+		utils.GetLogger(m.ctx).Infof("source count(%d), target count(%d), source total(%d), target total(%d), "+
+			"source progress(%d%%), target progress(%d%%), same count(%d)",
+			sourceCount, targetCount, sourceTotal, targetTotal,
+			sourceCount*100.0/sourceTotal, targetCount*100.0/targetTotal, sameCount)
 	}
 	return diffs, sameCount
 }
@@ -364,7 +377,7 @@ func (m *Migrator) Compare() ([3][]utils.HashDiff, error) {
 
 	diffs, sameCount := m.compare(keywordFields)
 
-	total := len(diffs[0]) + len(diffs[1]) + len(diffs[2]) + sameCount
+	total := cast.ToUint64(len(diffs[0])+len(diffs[1])+len(diffs[2])) + sameCount
 	utils.GetLogger(m.ctx).Infof("compare total (%d), add(%d), delete(%d), modified(%d), same(%d)",
 		total, len(diffs[0]), len(diffs[1]), len(diffs[2]), sameCount)
 	return diffs, nil

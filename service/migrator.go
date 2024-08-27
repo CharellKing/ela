@@ -372,6 +372,24 @@ func (m *Migrator) compare(keywordFields []string) ([3][]utils.HashDiff, uint64)
 			sourceCount, targetCount, sourceTotal, targetTotal,
 			sourceCount*100.0/sourceTotal, targetCount*100.0/targetTotal, sameCount)
 	}
+
+	for id, docHash := range sourceDocHashMap {
+		diffs[0] = append(diffs[0], utils.HashDiff{
+			Action:          utils.ActionTypeAdd,
+			Id:              id,
+			Type:            docHash.Type,
+			SourceHashValue: docHash.Hash,
+		})
+	}
+
+	for id, docHash := range targetDocHashMap {
+		diffs[1] = append(diffs[1], utils.HashDiff{
+			Action:          utils.ActionTypeDelete,
+			Id:              id,
+			Type:            docHash.Type,
+			TargetHashValue: docHash.Hash,
+		})
+	}
 	return diffs, sameCount
 }
 

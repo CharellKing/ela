@@ -31,6 +31,8 @@ func main() {
 		return
 	}
 
+	utils.InitLogger(&cfg)
+
 	ctx := context.Background()
 	taskMgr, err := service.NewTaskMgr(&cfg)
 	if err != nil {

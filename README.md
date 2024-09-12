@@ -11,6 +11,7 @@ Ela is a tool to migrator data between different elasticsearch with different ve
 ## Config
 
 ```yaml
+level: "info"         # log level which is used to log message, can be assigned to 'debug', 'info', 'warn', 'error'.
 elastics:             # elasticsearch clusters
   es5:                # cluster name which is unique
     addresses:        # elasticsearch addresses which has many masters

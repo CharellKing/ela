@@ -36,4 +36,5 @@ type ESConfig struct {
 type Config struct {
 	ESConfigs map[string]*ESConfig `mapstructure:"elastics"`
 	Tasks     []*TaskCfg           `mapstructure:"tasks"`
+	Level     string               `mapstructure:"level"`
 }

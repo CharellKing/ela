@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"github.com/CharellKing/ela/config"
 	"github.com/samber/lo"
 	log "github.com/sirupsen/logrus"
 	"os"
@@ -9,17 +10,29 @@ import (
 
 var logger *log.Logger
 
-func init() {
+func InitLogger(cfg *config.Config) {
+	levelMap := map[string]log.Level{
+		"debug": log.DebugLevel,
+		"info":  log.InfoLevel,
+		"warn":  log.WarnLevel,
+		"error": log.ErrorLevel,
+	}
+
+	level, ok := levelMap[cfg.Level]
+	if !ok {
+		level = log.InfoLevel
+	}
 	logger = &log.Logger{
 		Out:       os.Stdout,
 		Formatter: &log.JSONFormatter{},
 		Hooks:     make(log.LevelHooks),
-		Level:     log.InfoLevel,
+		Level:     level,
 	}
 	logger.SetReportCaller(true)
 }
 
 func GetLogger(ctx context.Context) *log.Entry {
+
 	entry := log.NewEntry(logger)
 
 	ctxKeyMap := map[CtxKey]func(ctx context.Context) string{

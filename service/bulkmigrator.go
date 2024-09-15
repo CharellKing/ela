@@ -17,6 +17,9 @@ import (
 const defaultScrollSize = 1000
 const defaultParallelism = 12
 const defaultScrollTime = 10
+const defaultSliceSize = 20
+const defaultBufferCount = 10000
+const defaultWriteParallel = 10
 
 type BulkMigrator struct {
 	ctx context.Context
@@ -33,6 +36,12 @@ type BulkMigrator struct {
 	ScrollSize uint
 
 	ScrollTime uint
+
+	SliceSize uint
+
+	BufferCount uint
+
+	WriteParallel uint
 }
 
 func NewBulkMigratorWithES(ctx context.Context, sourceES, targetES es2.ES) *BulkMigrator {
@@ -40,14 +49,17 @@ func NewBulkMigratorWithES(ctx context.Context, sourceES, targetES es2.ES) *Bulk
 	ctx = utils.SetCtxKeyTargetESVersion(ctx, targetES.GetClusterVersion())
 
 	return &BulkMigrator{
-		ctx:          ctx,
-		SourceES:     sourceES,
-		TargetES:     targetES,
-		Parallelism:  defaultParallelism,
-		IndexPairMap: make(map[string]*config.IndexPair),
-		Error:        nil,
-		ScrollSize:   defaultScrollSize,
-		ScrollTime:   defaultScrollTime,
+		ctx:           ctx,
+		SourceES:      sourceES,
+		TargetES:      targetES,
+		Parallelism:   defaultParallelism,
+		IndexPairMap:  make(map[string]*config.IndexPair),
+		Error:         nil,
+		ScrollSize:    defaultScrollSize,
+		ScrollTime:    defaultScrollTime,
+		SliceSize:     defaultSliceSize,
+		BufferCount:   defaultBufferCount,
+		WriteParallel: defaultWriteParallel,
 	}
 }
 
@@ -79,14 +91,17 @@ func (m *BulkMigrator) WithIndexPairs(indexPairs ...*config.IndexPair) *BulkMigr
 	}
 
 	newBulkMigrator := &BulkMigrator{
-		ctx:          m.ctx,
-		SourceES:     m.SourceES,
-		TargetES:     m.TargetES,
-		Parallelism:  m.Parallelism,
-		IndexPairMap: m.IndexPairMap,
-		Error:        m.Error,
-		ScrollSize:   m.ScrollSize,
-		ScrollTime:   m.ScrollTime,
+		ctx:           m.ctx,
+		SourceES:      m.SourceES,
+		TargetES:      m.TargetES,
+		Parallelism:   m.Parallelism,
+		IndexPairMap:  m.IndexPairMap,
+		Error:         m.Error,
+		ScrollSize:    m.ScrollSize,
+		ScrollTime:    m.ScrollTime,
+		SliceSize:     m.SliceSize,
+		BufferCount:   m.BufferCount,
+		WriteParallel: m.WriteParallel,
 	}
 
 	newIndexPairsMap := make(map[string]*config.IndexPair)
@@ -112,14 +127,17 @@ func (m *BulkMigrator) WithScrollSize(scrollSize uint) *BulkMigrator {
 		scrollSize = defaultScrollSize
 	}
 	return &BulkMigrator{
-		ctx:          m.ctx,
-		SourceES:     m.SourceES,
-		TargetES:     m.TargetES,
-		Parallelism:  m.Parallelism,
-		IndexPairMap: m.IndexPairMap,
-		Error:        m.Error,
-		ScrollSize:   scrollSize,
-		ScrollTime:   m.ScrollTime,
+		ctx:           m.ctx,
+		SourceES:      m.SourceES,
+		TargetES:      m.TargetES,
+		Parallelism:   m.Parallelism,
+		IndexPairMap:  m.IndexPairMap,
+		Error:         m.Error,
+		ScrollSize:    scrollSize,
+		ScrollTime:    m.ScrollTime,
+		SliceSize:     m.SliceSize,
+		BufferCount:   m.BufferCount,
+		WriteParallel: m.WriteParallel,
 	}
 }
 
@@ -132,14 +150,86 @@ func (m *BulkMigrator) WithScrollTime(scrollTime uint) *BulkMigrator {
 		scrollTime = defaultScrollTime
 	}
 	return &BulkMigrator{
-		ctx:          m.ctx,
-		SourceES:     m.SourceES,
-		TargetES:     m.TargetES,
-		Parallelism:  m.Parallelism,
-		IndexPairMap: m.IndexPairMap,
-		Error:        m.Error,
-		ScrollSize:   m.ScrollSize,
-		ScrollTime:   scrollTime,
+		ctx:           m.ctx,
+		SourceES:      m.SourceES,
+		TargetES:      m.TargetES,
+		Parallelism:   m.Parallelism,
+		IndexPairMap:  m.IndexPairMap,
+		Error:         m.Error,
+		ScrollSize:    m.ScrollSize,
+		ScrollTime:    scrollTime,
+		SliceSize:     m.SliceSize,
+		BufferCount:   m.BufferCount,
+		WriteParallel: m.WriteParallel,
+	}
+}
+
+func (m *BulkMigrator) WithSliceSize(sliceSize uint) *BulkMigrator {
+	if m.Error != nil {
+		return m
+	}
+
+	if sliceSize == 0 {
+		sliceSize = defaultSliceSize
+	}
+	return &BulkMigrator{
+		ctx:           m.ctx,
+		SourceES:      m.SourceES,
+		TargetES:      m.TargetES,
+		Parallelism:   m.Parallelism,
+		IndexPairMap:  m.IndexPairMap,
+		Error:         m.Error,
+		ScrollSize:    m.ScrollSize,
+		ScrollTime:    m.ScrollTime,
+		SliceSize:     sliceSize,
+		BufferCount:   m.BufferCount,
+		WriteParallel: m.WriteParallel,
+	}
+}
+
+func (m *BulkMigrator) WithBufferCount(bufferCount uint) *BulkMigrator {
+	if m.Error != nil {
+		return m
+	}
+
+	if bufferCount == 0 {
+		bufferCount = defaultBufferCount
+	}
+	return &BulkMigrator{
+		ctx:           m.ctx,
+		SourceES:      m.SourceES,
+		TargetES:      m.TargetES,
+		Parallelism:   m.Parallelism,
+		IndexPairMap:  m.IndexPairMap,
+		Error:         m.Error,
+		ScrollSize:    m.ScrollSize,
+		ScrollTime:    m.ScrollTime,
+		SliceSize:     m.SliceSize,
+		BufferCount:   bufferCount,
+		WriteParallel: m.WriteParallel,
+	}
+}
+
+func (m *BulkMigrator) WithWriteParallel(writeParallel uint) *BulkMigrator {
+	if m.Error != nil {
+		return m
+	}
+
+	if writeParallel == 0 {
+		writeParallel = defaultWriteParallel
+	}
+	return &BulkMigrator{
+		ctx:           m.ctx,
+		SourceES:      m.SourceES,
+		TargetES:      m.TargetES,
+		Parallelism:   m.Parallelism,
+		IndexPairMap:  m.IndexPairMap,
+		Error:         m.Error,
+		ScrollSize:    m.ScrollSize,
+		ScrollTime:    m.ScrollTime,
+		SliceSize:     m.SliceSize,
+		BufferCount:   m.BufferCount,
+		WriteParallel: writeParallel,
 	}
 }
 
@@ -169,14 +259,17 @@ func (m *BulkMigrator) WithPatternIndexes(pattern string) *BulkMigrator {
 	}
 
 	newBulkMigrator := &BulkMigrator{
-		ctx:          m.ctx,
-		SourceES:     m.SourceES,
-		TargetES:     m.TargetES,
-		Parallelism:  m.Parallelism,
-		IndexPairMap: m.IndexPairMap,
-		Error:        m.Error,
-		ScrollSize:   m.ScrollSize,
-		ScrollTime:   m.ScrollTime,
+		ctx:           m.ctx,
+		SourceES:      m.SourceES,
+		TargetES:      m.TargetES,
+		Parallelism:   m.Parallelism,
+		IndexPairMap:  m.IndexPairMap,
+		Error:         m.Error,
+		ScrollSize:    m.ScrollSize,
+		ScrollTime:    m.ScrollTime,
+		SliceSize:     m.SliceSize,
+		BufferCount:   m.BufferCount,
+		WriteParallel: m.WriteParallel,
 	}
 
 	var filterIndexes []string
@@ -214,13 +307,17 @@ func (m *BulkMigrator) WithParallelism(parallelism uint) *BulkMigrator {
 		parallelism = defaultParallelism
 	}
 	return &BulkMigrator{
-		ctx:          m.ctx,
-		SourceES:     m.SourceES,
-		TargetES:     m.TargetES,
-		Parallelism:  parallelism,
-		IndexPairMap: m.IndexPairMap,
-		Error:        m.Error,
-		ScrollSize:   m.ScrollSize,
+		ctx:           m.ctx,
+		SourceES:      m.SourceES,
+		TargetES:      m.TargetES,
+		Parallelism:   parallelism,
+		IndexPairMap:  m.IndexPairMap,
+		Error:         m.Error,
+		ScrollSize:    m.ScrollSize,
+		ScrollTime:    m.ScrollTime,
+		SliceSize:     m.SliceSize,
+		BufferCount:   m.BufferCount,
+		WriteParallel: m.WriteParallel,
 	}
 }
 
@@ -237,37 +334,36 @@ func (m *BulkMigrator) Sync(force bool) error {
 	return nil
 }
 
-func (m *BulkMigrator) SyncDiff(diffs *map[string][]utils.HashDiff) error {
+func (m *BulkMigrator) SyncDiff() (map[string]*DiffResult, error) {
 	if m.Error != nil {
-		return errors.WithStack(m.Error)
+		return nil, errors.WithStack(m.Error)
 	}
 
 	var diffMap sync.Map
 	m.parallelRun(func(migrator *Migrator) {
-		diffsItem, err := migrator.SyncDiff()
+		diffResult, err := migrator.SyncDiff()
 		if err != nil {
-			utils.GetLogger(migrator.GetCtx()).WithError(err).Error("syncDiff")
+			utils.GetLogger(migrator.GetCtx()).WithError(err).Info("syncDiff")
+			return
 		}
-		diffMap.Store(m.getIndexPairKey(&migrator.IndexPair), diffsItem)
+		if diffResult.HasDiff() {
+			diffMap.Store(m.getIndexPairKey(&migrator.IndexPair), diffResult)
+		} else {
+			utils.GetLogger(migrator.GetCtx()).Info("no difference")
+		}
 	})
 
-	result := make(map[string][]utils.HashDiff)
+	result := make(map[string]*DiffResult)
 	diffMap.Range(func(key, value interface{}) bool {
 		keyStr := cast.ToString(key)
-		diffsArrayList := value.([3][]utils.HashDiff)
-		var diffArray []utils.HashDiff
-		diffArray = append(diffArray, diffsArrayList[0]...)
-		diffArray = append(diffArray, diffsArrayList[1]...)
-		diffArray = append(diffArray, diffsArrayList[2]...)
-		result[keyStr] = diffArray
+		result[keyStr] = value.(*DiffResult)
 		return true
 	})
 
-	diffs = &result
-	return nil
+	return result, nil
 }
 
-func (m *BulkMigrator) Compare() (map[string][]utils.HashDiff, error) {
+func (m *BulkMigrator) Compare() (map[string]*DiffResult, error) {
 	if m.Error != nil {
 		return nil, errors.WithStack(m.Error)
 	}
@@ -275,28 +371,23 @@ func (m *BulkMigrator) Compare() (map[string][]utils.HashDiff, error) {
 	var diffMap sync.Map
 
 	m.parallelRun(func(migrator *Migrator) {
-		diffsItem, err := migrator.Compare()
+		diffResult, err := migrator.Compare()
 		if err != nil {
-			utils.GetLogger(migrator.GetCtx()).WithError(err).Error("compare")
+			utils.GetLogger(m.GetCtx()).WithError(err).Info("compare")
+			return
 		}
-
-		if len(diffsItem[0]) > 0 || len(diffsItem[1]) > 0 || len(diffsItem[2]) > 0 {
-			diffMap.Store(m.getIndexPairKey(&migrator.IndexPair), diffsItem)
+		if diffResult.HasDiff() {
+			diffMap.Store(m.getIndexPairKey(&migrator.IndexPair), diffResult)
 		} else {
 			utils.GetLogger(migrator.GetCtx()).Info("no difference")
 		}
 	})
 
-	result := make(map[string][]utils.HashDiff)
+	result := make(map[string]*DiffResult)
 
 	diffMap.Range(func(key, value interface{}) bool {
 		keyStr := cast.ToString(key)
-		diffsArrayList := value.([3][]utils.HashDiff)
-		var diffArray []utils.HashDiff
-		diffArray = append(diffArray, diffsArrayList[0]...)
-		diffArray = append(diffArray, diffsArrayList[1]...)
-		diffArray = append(diffArray, diffsArrayList[2]...)
-		result[keyStr] = diffArray
+		result[keyStr] = value.(*DiffResult)
 		return true
 	})
 
@@ -320,12 +411,15 @@ func (m *BulkMigrator) parallelRun(callback func(migrator *Migrator)) {
 	pool := pond.New(cast.ToInt(m.Parallelism), len(m.IndexPairMap))
 	for _, indexPair := range m.IndexPairMap {
 		newMigrator := &Migrator{
-			ctx:        m.ctx,
-			SourceES:   m.SourceES,
-			TargetES:   m.TargetES,
-			IndexPair:  *indexPair,
-			ScrollSize: m.ScrollSize,
-			ScrollTime: m.ScrollTime,
+			ctx:           m.ctx,
+			SourceES:      m.SourceES,
+			TargetES:      m.TargetES,
+			IndexPair:     *indexPair,
+			ScrollSize:    m.ScrollSize,
+			ScrollTime:    m.ScrollTime,
+			SliceSize:     m.SliceSize,
+			BufferCount:   m.BufferCount,
+			WriteParallel: m.WriteParallel,
 		}
 		pool.Submit(func() {
 			callback(newMigrator)

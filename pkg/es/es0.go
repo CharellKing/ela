@@ -12,23 +12,44 @@ import (
 	"github.com/pkg/errors"
 )
 
-type ScrollResultYield struct {
-	Total uint64
-	Docs  []*Doc
+type Operation int
+
+const (
+	OperationCreate Operation = iota
+	OperationUpdate
+	OperationDelete
+	OperationSame
+)
+
+type ScrollResult struct {
+	Total    uint64
+	Docs     []*Doc
+	ScrollId string
 }
 
 type Doc struct {
 	Type   string                 `mapstructure:"_type"`
 	ID     string                 `mapstructure:"_id"`
 	Source map[string]interface{} `mapstructure:"_source"`
+	Op     Operation              `mapstructure:"_op"`
 }
 
+type ScrollOption struct {
+	Query      map[string]interface{}
+	SortFields []string
+	ScrollSize uint
+	ScrollTime uint
+	SliceId    *uint
+	SliceSize  *uint
+}
 type ES interface {
 	GetClusterVersion() string
 	IndexExisted(index string) (bool, error)
 	GetIndexes() ([]string, error)
-	SearchByScroll(ctx context.Context, index string, query map[string]interface{},
-		sortFields []string, scrollSize uint, scrollTime uint, yield func(*ScrollResultYield)) error
+
+	NewScroll(index string, option *ScrollOption) (*ScrollResult, error)
+	NextScroll(ctx context.Context, scrollId string, scrollTime uint) (*ScrollResult, error)
+	ClearScroll(scrollId string) error
 
 	BulkInsert(index string, hitDocs []*Doc) error
 	BulkUpdate(index string, hitDocs []*Doc) error

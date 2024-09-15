@@ -10,16 +10,19 @@ const (
 )
 
 type TaskCfg struct {
-	Name         string       `mapstructure:"name"`
-	IndexPattern *string      `mapstructure:"index_pattern"`
-	SourceES     string       `mapstructure:"source_es"`
-	TargetES     string       `mapstructure:"target_es"`
-	IndexPairs   []*IndexPair `mapstructure:"index_pairs"`
-	TaskAction   TaskAction   `mapstructure:"action"`
-	Force        bool         `mapstructure:"force"`
-	ScrollSize   uint         `mapstructure:"scroll_size"`
-	ScrollTime   uint         `mapstructure:"scroll_time"`
-	Parallelism  uint         `mapstructure:"parallelism"`
+	Name             string       `mapstructure:"name"`
+	IndexPattern     *string      `mapstructure:"index_pattern"`
+	SourceES         string       `mapstructure:"source_es"`
+	TargetES         string       `mapstructure:"target_es"`
+	IndexPairs       []*IndexPair `mapstructure:"index_pairs"`
+	TaskAction       TaskAction   `mapstructure:"action"`
+	Force            bool         `mapstructure:"force"`
+	ScrollSize       uint         `mapstructure:"scroll_size"`
+	ScrollTime       uint         `mapstructure:"scroll_time"`
+	Parallelism      uint         `mapstructure:"parallelism"`
+	SliceSize        uint         `mapstructure:"slice_size"`
+	BufferCount      uint         `mapstructure:"buffer_count"`
+	WriteParallelism uint         `mapstructure:"write_parallelism"`
 }
 
 type IndexPair struct {

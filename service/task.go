@@ -26,7 +26,8 @@ func NewTaskWithES(ctx context.Context, taskCfg *config.TaskCfg, sourceES, targe
 
 	bulkMigrator := NewBulkMigratorWithES(ctx, sourceES, targetES)
 	bulkMigrator = bulkMigrator.WithScrollSize(taskCfg.ScrollSize).WithIndexPairs(taskCfg.IndexPairs...).
-		WithParallelism(taskCfg.Parallelism).WithScrollTime(taskCfg.ScrollTime)
+		WithParallelism(taskCfg.Parallelism).WithScrollTime(taskCfg.ScrollTime).WithSliceSize(taskCfg.SliceSize).
+		WithBufferCount(taskCfg.BufferCount).WithWriteParallel(taskCfg.WriteParallelism)
 	if taskCfg.IndexPattern != nil {
 		bulkMigrator = bulkMigrator.WithPatternIndexes(*taskCfg.IndexPattern)
 	}
@@ -62,43 +63,69 @@ func (t *Task) GetCtx() context.Context {
 	return t.bulkMigrator.GetCtx()
 }
 
+func (t *Task) Compare() (map[string]*DiffResult, error) {
+	return t.bulkMigrator.Compare()
+}
+
+func (t *Task) SyncDiff() (map[string]*DiffResult, error) {
+	return t.bulkMigrator.SyncDiff()
+}
+
+func (t *Task) Sync() error {
+	return t.bulkMigrator.Sync(t.force)
+}
+
+func (t *Task) CopyIndexSettings() error {
+	return t.bulkMigrator.CopyIndexSettings(t.force)
+}
+
 func (t *Task) Run() error {
 	ctx := t.GetCtx()
 	taskAction := config.TaskAction(utils.GetCtxKeyTaskAction(ctx))
 	switch taskAction {
 	case config.TaskActionCopyIndex:
-		return t.bulkMigrator.CopyIndexSettings(t.force)
+		return t.CopyIndexSettings()
 	case config.TaskActionSync:
-		return t.bulkMigrator.Sync(t.force)
+		return t.Sync()
 	case config.TaskActionSyncDiff:
-		var diffs map[string][]utils.HashDiff
-		err := t.bulkMigrator.SyncDiff(&diffs)
+		diffResultMap, err := t.SyncDiff()
 		if err != nil {
 			return errors.WithStack(err)
 		}
 
-		for indexes, diff := range diffs {
+		for indexes, diffResult := range diffResultMap {
 			indexArray := strings.Split(indexes, ":")
-			for _, d := range diff {
-				utils.GetLogger(t.GetCtx()).WithField("docId", d.Id).
-					WithField("sourceIndex", indexArray[0]).
-					WithField("targetIndex", indexArray[1]).Info("difference")
-			}
+			utils.GetLogger(t.GetCtx()).
+				WithField("sourceIndex", indexArray[0]).
+				WithField("targetIndex", indexArray[1]).
+				WithField("percent", diffResult.Percent()).
+				WithField("create", diffResult.CreateCount).
+				WithField("update", diffResult.UpdateCount).
+				WithField("delete", diffResult.DeleteCount).
+				WithField("createDocs", diffResult.CreateDocs).
+				WithField("updateDocs", diffResult.UpdateDocs).
+				WithField("deleteDocs", diffResult.DeleteDocs).
+				Info("difference")
 		}
 	case config.TaskActionCompare:
-		diffs, err := t.bulkMigrator.Compare()
+		diffResultMap, err := t.bulkMigrator.Compare()
 		if err != nil {
 			return errors.WithStack(err)
 		}
 
-		for indexes, diff := range diffs {
+		for indexes, diffResult := range diffResultMap {
 			indexArray := strings.Split(indexes, ":")
-			for _, d := range diff {
-				utils.GetLogger(t.GetCtx()).WithField("docId", d.Id).
-					WithField("sourceIndex", indexArray[0]).
-					WithField("targetIndex", indexArray[1]).Info("difference")
-			}
-
+			utils.GetLogger(t.GetCtx()).
+				WithField("sourceIndex", indexArray[0]).
+				WithField("targetIndex", indexArray[1]).
+				WithField("percent", diffResult.Percent()).
+				WithField("create", diffResult.CreateCount).
+				WithField("update", diffResult.UpdateCount).
+				WithField("delete", diffResult.DeleteCount).
+				WithField("createDocs", diffResult.CreateDocs).
+				WithField("updateDocs", diffResult.UpdateDocs).
+				WithField("deleteDocs", diffResult.DeleteDocs).
+				Info("difference")
 		}
 	default:
 		taskName := utils.GetCtxKeyTaskName(ctx)

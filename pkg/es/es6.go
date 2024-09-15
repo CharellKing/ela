@@ -9,18 +9,17 @@ import (
 	"fmt"
 	"github.com/CharellKing/ela/config"
 	"github.com/CharellKing/ela/utils"
+	elasticsearch6 "github.com/elastic/go-elasticsearch/v6"
+	"github.com/elastic/go-elasticsearch/v6/esapi"
 	"github.com/mitchellh/mapstructure"
+	"github.com/pkg/errors"
+	"github.com/samber/lo"
 	"github.com/spf13/cast"
 	"io"
 	"log"
 	"net/http"
 	"strings"
 	"time"
-
-	elasticsearch6 "github.com/elastic/go-elasticsearch/v6"
-	"github.com/elastic/go-elasticsearch/v6/esapi"
-	"github.com/pkg/errors"
-	"github.com/samber/lo"
 )
 
 type V6 struct {
@@ -56,12 +55,23 @@ func (es *V6) GetClusterVersion() string {
 	return es.ClusterVersion
 }
 
-func (es *V6) SearchByScroll(ctx context.Context, index string, query map[string]interface{},
-	sortFields []string, scrollSize uint, scrollTime uint, yield func(*ScrollResultYield)) error {
+func (es *V6) NewScroll(index string, option *ScrollOption) (*ScrollResult, error) {
 	scrollSearchOptions := []func(*esapi.SearchRequest){
 		es.Search.WithIndex(index),
-		es.Search.WithSize(cast.ToInt(scrollSize)),
-		es.Search.WithScroll(cast.ToDuration(scrollTime) * time.Minute),
+		es.Search.WithSize(cast.ToInt(option.ScrollSize)),
+		es.Search.WithScroll(cast.ToDuration(option.ScrollTime) * time.Minute),
+	}
+
+	query := make(map[string]interface{})
+	for k, v := range option.Query {
+		query[k] = v
+	}
+
+	if option.SliceId != nil {
+		query["slice"] = map[string]interface{}{
+			"id":  *option.SliceId,
+			"max": *option.SliceSize,
+		}
 	}
 
 	if len(query) > 0 {
@@ -70,12 +80,13 @@ func (es *V6) SearchByScroll(ctx context.Context, index string, query map[string
 		scrollSearchOptions = append(scrollSearchOptions, es.Client.Search.WithBody(&buf))
 	}
 
-	if len(sortFields) > 0 {
-		scrollSearchOptions = append(scrollSearchOptions, es.Client.Search.WithSort(sortFields...))
+	if len(option.SortFields) > 0 {
+		scrollSearchOptions = append(scrollSearchOptions, es.Client.Search.WithSort(option.SortFields...))
 	}
+
 	res, err := es.Client.Search(scrollSearchOptions...)
 	if err != nil {
-		return errors.WithStack(err)
+		return nil, errors.WithStack(err)
 	}
 
 	defer func() {
@@ -83,21 +94,13 @@ func (es *V6) SearchByScroll(ctx context.Context, index string, query map[string
 	}()
 
 	if res.IsError() {
-		return errors.New(res.String())
+		return nil, errors.New(res.String())
 	}
 
 	var scrollResult ScrollResultV5
 	if err := json.NewDecoder(res.Body).Decode(&scrollResult); err != nil {
-		return errors.WithStack(err)
+		return nil, errors.WithStack(err)
 	}
-
-	defer func() {
-		if scrollResult.ScrollId != "" {
-			if _, err := es.Client.ClearScroll(es.Client.ClearScroll.WithScrollID(scrollResult.ScrollId)); err != nil {
-				utils.GetLogger(ctx).WithError(err).Error("clear scroll")
-			}
-		}
-	}()
 
 	var hitDocs []*Doc
 	for _, hit := range scrollResult.Hits.Docs {
@@ -106,55 +109,51 @@ func (es *V6) SearchByScroll(ctx context.Context, index string, query map[string
 		hitDocs = append(hitDocs, &hitDoc)
 	}
 
-	yield(&ScrollResultYield{
-		Total: uint64(scrollResult.Hits.Total),
-		Docs:  hitDocs,
-	})
+	return &ScrollResult{
+		Total:    uint64(scrollResult.Hits.Total),
+		Docs:     hitDocs,
+		ScrollId: scrollResult.ScrollId,
+	}, nil
+}
 
-	var stopLoop bool
-	for !stopLoop {
-		if err := func() error {
-			res, err := es.Client.Scroll(es.Client.Scroll.WithScrollID(scrollResult.ScrollId), es.Client.Scroll.WithScroll(time.Minute))
-			if err != nil {
-				return errors.WithStack(err)
-			}
-
-			defer func() {
-				_ = res.Body.Close()
-			}()
-
-			if res.IsError() {
-				return errors.New(res.String())
-			}
-
-			var scrollResult ScrollResultV5
-			if err := json.NewDecoder(res.Body).Decode(&scrollResult); err != nil {
-				return errors.WithStack(err)
-			}
-
-			if len(scrollResult.Hits.Docs) == 0 {
-				stopLoop = true
-				return nil
-			}
-
-			var hitDocs []*Doc
-			for _, hit := range scrollResult.Hits.Docs {
-				var hitDoc Doc
-				_ = mapstructure.Decode(hit, &hitDoc)
-				hitDocs = append(hitDocs, &hitDoc)
-			}
-
-			yield(&ScrollResultYield{
-				Total: uint64(scrollResult.Hits.Total),
-				Docs:  hitDocs,
-			})
-			return nil
-		}(); err != nil {
-			return errors.WithStack(err)
-		}
+func (es *V6) NextScroll(ctx context.Context, scrollId string, scrollTime uint) (*ScrollResult, error) {
+	res, err := es.Client.Scroll(es.Client.Scroll.WithScrollID(scrollId), es.Client.Scroll.WithScroll(time.Duration(scrollTime)*time.Minute))
+	if err != nil {
+		return nil, errors.WithStack(err)
 	}
 
-	return nil
+	defer func() {
+		_ = res.Body.Close()
+	}()
+
+	if res.IsError() {
+		return nil, errors.New(res.String())
+	}
+
+	var scrollResult ScrollResultV5
+	if err := json.NewDecoder(res.Body).Decode(&scrollResult); err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	var hitDocs []*Doc
+	for _, hit := range scrollResult.Hits.Docs {
+		var hitDoc Doc
+		_ = mapstructure.Decode(hit, &hitDoc)
+		hitDocs = append(hitDocs, &hitDoc)
+	}
+
+	if len(hitDocs) <= 0 {
+		if scrollResult.ScrollId != "" {
+			if _, err := es.Client.ClearScroll(es.Client.ClearScroll.WithScrollID(scrollResult.ScrollId)); err != nil {
+				utils.GetLogger(ctx).WithError(err).WithField("scrollId", scrollResult.ScrollId).Error("clear scroll")
+			}
+		}
+	}
+	return &ScrollResult{
+		Total:    uint64(scrollResult.Hits.Total),
+		Docs:     hitDocs,
+		ScrollId: scrollResult.ScrollId,
+	}, nil
 }
 
 func (es *V6) GetIndexMappingAndSetting(index string) (IESSettings, error) {
@@ -170,6 +169,23 @@ func (es *V6) GetIndexMappingAndSetting(index string) (IESSettings, error) {
 	}
 
 	return NewV6Settings(setting, mapping, index), nil
+}
+
+func (es *V6) ClearScroll(scrollId string) error {
+	res, err := es.Client.ClearScroll(es.Client.ClearScroll.WithScrollID(scrollId))
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	defer func() {
+		_ = res.Body.Close()
+	}()
+
+	if res.IsError() {
+		return errors.New(res.String())
+	}
+
+	return nil
 }
 
 func (es *V6) GetIndexMapping(index string) (map[string]interface{}, error) {
@@ -423,7 +439,7 @@ func (es *V6) GetIndexes() ([]string, error) {
 	for scanner.Scan() {
 		value := scanner.Text()
 		segments := strings.Split(value, " ")
-		indices = append(indices, segments[3])
+		indices = append(indices, segments[2])
 	}
 
 	if err := scanner.Err(); err != nil {

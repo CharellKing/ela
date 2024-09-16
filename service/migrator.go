@@ -7,12 +7,15 @@ import (
 	"encoding/json"
 	"github.com/CharellKing/ela/config"
 	es2 "github.com/CharellKing/ela/pkg/es"
+	lop "github.com/samber/lo/parallel"
+
 	"github.com/CharellKing/ela/utils"
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
 	"github.com/spf13/cast"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 type Migrator struct {
@@ -206,18 +209,21 @@ func (m *Migrator) SyncDiff() (*DiffResult, error) {
 	errs := <-errsCh
 
 	if len(diffResult.CreateDocs) > 0 {
+		utils.GetLogger(m.ctx).Debugf("sync with create docs: %+v", len(diffResult.CreateDocs))
 		if err := m.syncUpsert(getQueryMap(diffResult.CreateDocs), es2.OperationCreate); err != nil {
 			errs.Add(errors.WithStack(err))
 		}
 	}
 
 	if len(diffResult.UpdateDocs) > 0 {
+		utils.GetLogger(m.ctx).Debugf("sync with update docs: %+v", len(diffResult.UpdateDocs))
 		if err := m.syncUpsert(getQueryMap(diffResult.UpdateDocs), es2.OperationUpdate); err != nil {
 			errs.Add(errors.WithStack(err))
 		}
 	}
 
 	if len(diffResult.DeleteDocs) > 0 {
+		utils.GetLogger(m.ctx).Debugf("sync with delete docs: %+v", len(diffResult.DeleteDocs))
 		if err := m.syncUpsert(getQueryMap(diffResult.DeleteDocs), es2.OperationDelete); err != nil {
 			errs.Add(errors.WithStack(err))
 		}
@@ -300,14 +306,16 @@ func (m *Migrator) compare() (chan *es2.Doc, chan utils.Errs) {
 		return nil, errsCh
 	}
 
-	sourceDocCh := m.search(m.SourceES, m.IndexPair.SourceIndex, nil, keywordFields, errCh)
+	sourceDocCh, sourceTotal := m.search(m.SourceES, m.IndexPair.SourceIndex, nil, keywordFields, errCh, true)
 
-	targetDocCh := m.search(m.TargetES, m.IndexPair.TargetIndex, nil, keywordFields, errCh)
+	targetDocCh, targetTotal := m.search(m.TargetES, m.IndexPair.TargetIndex, nil, keywordFields, errCh, true)
 
 	var (
 		sourceOk bool
 		targetOk bool
 
+		sourceCount      uint64
+		targetCount      uint64
 		sourceDocHashMap = make(map[string]string)
 		targetDocHashMap = make(map[string]string)
 	)
@@ -331,12 +339,17 @@ func (m *Migrator) compare() (chan *es2.Doc, chan utils.Errs) {
 			}
 
 			if sourceResult != nil {
-				sourceDocHashMap[sourceResult.ID] = m.getDocHash(sourceResult)
+				sourceCount++
+				sourceDocHashMap[sourceResult.ID] = sourceResult.Hash
 			}
 
 			if targetResult != nil {
-				targetDocHashMap[targetResult.ID] = m.getDocHash(targetResult)
+				targetCount++
+				targetDocHashMap[targetResult.ID] = sourceResult.Hash
 			}
+
+			utils.GetLogger(m.GetCtx()).WithField("sourceProgress", cast.ToFloat32(sourceCount)/cast.ToFloat32(sourceTotal)).
+				WithField("targetProgress", cast.ToFloat32(targetCount)/cast.ToFloat32(targetTotal)).Debug("compare progress")
 
 			if sourceResult != nil {
 				targetHashValue, ok := targetDocHashMap[sourceResult.ID]
@@ -448,6 +461,7 @@ func (m *Migrator) Compare() (*DiffResult, error) {
 }
 
 func (m *Migrator) Sync(force bool) error {
+	utils.GetLogger(m.ctx).Debugf("sync with force: %+v", force)
 	if err := m.CopyIndexSettings(force); err != nil {
 		return errors.WithStack(err)
 	}
@@ -457,8 +471,8 @@ func (m *Migrator) Sync(force bool) error {
 	return nil
 }
 
-func (m *Migrator) searchSingleSlice(es es2.ES, index string, query map[string]interface{}, sortFields []string,
-	sliceId *uint, sliceSize *uint, docCh chan *es2.Doc) error {
+func (m *Migrator) searchSingleSlice(wg *sync.WaitGroup, es es2.ES, index string, query map[string]interface{}, sortFields []string,
+	sliceId *uint, sliceSize *uint, docCh chan *es2.Doc, errCh chan error, needHash bool) uint64 {
 	scrollResult, err := es.NewScroll(index, &es2.ScrollOption{
 		Query:      query,
 		SortFields: sortFields,
@@ -467,69 +481,79 @@ func (m *Migrator) searchSingleSlice(es es2.ES, index string, query map[string]i
 		SliceId:    sliceId,
 		SliceSize:  sliceSize,
 	})
-	if err != nil {
-		return errors.WithStack(err)
+
+	if scrollResult == nil {
+		return 0
 	}
 
-	defer func() {
-		if err := es.ClearScroll(scrollResult.ScrollId); err != nil {
-			utils.GetLogger(m.GetCtx()).WithError(err).Error("clear scroll")
-		}
-	}()
-	for {
-		for _, doc := range scrollResult.Docs {
-			docCh <- doc
+	wg.Add(1)
+	utils.GoRecovery(m.GetCtx(), func() {
+		defer func() {
+			wg.Done()
+			if err := es.ClearScroll(scrollResult.ScrollId); err != nil {
+				utils.GetLogger(m.GetCtx()).WithError(err).Error("clear scroll")
+			}
+		}()
+
+		if err != nil {
+			errCh <- errors.WithStack(err)
 		}
 
-		if len(scrollResult.Docs) < cast.ToInt(m.ScrollSize) {
-			break
+		for {
+			if needHash {
+				lop.Map(scrollResult.Docs, func(doc *es2.Doc, _ int) *es2.Doc {
+					doc.Hash = m.getDocHash(doc)
+					return doc
+				})
+			}
+			for _, doc := range scrollResult.Docs {
+				docCh <- doc
+			}
+
+			if len(scrollResult.Docs) < cast.ToInt(m.ScrollSize) {
+				break
+			}
+			if scrollResult, err = es.NextScroll(m.GetCtx(), scrollResult.ScrollId, m.ScrollTime); err != nil {
+				errCh <- errors.WithStack(err)
+			}
 		}
-		if scrollResult, err = es.NextScroll(m.GetCtx(), scrollResult.ScrollId, m.ScrollTime); err != nil {
-			return errors.WithStack(err)
-		}
-	}
-	return nil
+	})
+
+	return scrollResult.Total
 }
 
 func (m *Migrator) search(es es2.ES, index string, query map[string]interface{},
-	sortFields []string, errCh chan error) chan *es2.Doc {
+	sortFields []string, errCh chan error, needHash bool) (chan *es2.Doc, uint64) {
 	docCh := make(chan *es2.Doc, m.BufferCount)
 	var wg sync.WaitGroup
+	var total uint64
 	if m.SliceSize <= 1 {
 		wg.Add(1)
-		utils.GoRecovery(m.GetCtx(), func() {
-			defer wg.Done()
-			err := m.searchSingleSlice(es, index, query, sortFields, nil, nil, docCh)
-			if err != nil {
-				errCh <- errors.WithStack(err)
-			}
-		})
+		total = m.searchSingleSlice(&wg, es, index, query, sortFields, nil, nil, docCh, errCh, needHash)
 	} else {
-		wg.Add(cast.ToInt(m.SliceSize))
-
 		for i := uint(0); i < m.SliceSize; i++ {
 			idx := i
-			utils.GoRecovery(m.GetCtx(), func() {
-				defer wg.Done()
-				if err := m.searchSingleSlice(es, index, query, sortFields, &idx, &m.SliceSize, docCh); err != nil {
-					errCh <- errors.WithStack(err)
-				}
-			})
+			total += m.searchSingleSlice(&wg, es, index, query, sortFields, &idx, &m.SliceSize, docCh, errCh, needHash)
 		}
 	}
 	utils.GoRecovery(m.GetCtx(), func() {
 		wg.Wait()
 		close(docCh)
 	})
-	return docCh
+	return docCh, total
 }
 
-func (m *Migrator) singleBulkWorker(doc <-chan *es2.Doc, operation es2.Operation, errCh chan error) {
+func (m *Migrator) singleBulkWorker(doc <-chan *es2.Doc, total uint64, count *atomic.Uint64,
+	operation es2.Operation, errCh chan error) {
 	for {
 		v, ok := <-doc
 		if !ok {
 			break
 		}
+
+		count.Add(1)
+		utils.GetLogger(m.GetCtx()).Debugf("bulk progress %+v",
+			cast.ToFloat32(count.Load())/cast.ToFloat32(total))
 
 		switch operation {
 		case es2.OperationCreate:
@@ -550,17 +574,18 @@ func (m *Migrator) singleBulkWorker(doc <-chan *es2.Doc, operation es2.Operation
 	}
 }
 
-func (m *Migrator) bulkWorker(doc <-chan *es2.Doc, operation es2.Operation, errCh chan error) {
+func (m *Migrator) bulkWorker(doc <-chan *es2.Doc, total uint64, operation es2.Operation, errCh chan error) {
 	var wg sync.WaitGroup
+	var count atomic.Uint64
 	if m.WriteParallel <= 1 {
-		m.singleBulkWorker(doc, operation, errCh)
+		m.singleBulkWorker(doc, total, &count, operation, errCh)
 	}
 
 	wg.Add(cast.ToInt(m.WriteParallel))
 	for i := 0; i < cast.ToInt(m.WriteParallel); i++ {
 		utils.GoRecovery(m.ctx, func() {
 			defer wg.Done()
-			m.singleBulkWorker(doc, operation, errCh)
+			m.singleBulkWorker(doc, total, &count, operation, errCh)
 		})
 	}
 	wg.Wait()
@@ -570,13 +595,16 @@ func (m *Migrator) syncUpsert(query map[string]interface{}, operation es2.Operat
 	errCh := make(chan error)
 	errsCh := m.handleMultipleErrors(errCh)
 
-	var docCh chan *es2.Doc
+	var (
+		docCh chan *es2.Doc
+		total uint64
+	)
 	if operation == es2.OperationDelete {
-		docCh = m.search(m.TargetES, m.IndexPair.SourceIndex, query, nil, errCh)
+		docCh, total = m.search(m.TargetES, m.IndexPair.SourceIndex, query, nil, errCh, false)
 	} else {
-		docCh = m.search(m.SourceES, m.IndexPair.SourceIndex, query, nil, errCh)
+		docCh, total = m.search(m.SourceES, m.IndexPair.SourceIndex, query, nil, errCh, false)
 	}
-	m.bulkWorker(docCh, operation, errCh)
+	m.bulkWorker(docCh, total, operation, errCh)
 	close(errCh)
 	errs := <-errsCh
 	return errs.Ret()

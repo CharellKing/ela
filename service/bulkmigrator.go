@@ -18,7 +18,7 @@ const defaultScrollSize = 1000
 const defaultParallelism = 12
 const defaultScrollTime = 10
 const defaultSliceSize = 20
-const defaultBufferCount = 10000
+const defaultBufferCount = 500
 const defaultWriteParallel = 10
 
 type BulkMigrator struct {

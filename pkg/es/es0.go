@@ -31,6 +31,7 @@ type Doc struct {
 	Type   string                 `mapstructure:"_type"`
 	ID     string                 `mapstructure:"_id"`
 	Source map[string]interface{} `mapstructure:"_source"`
+	Hash   string                 `mapstructure:"_hash"`
 	Op     Operation              `mapstructure:"_op"`
 }
 

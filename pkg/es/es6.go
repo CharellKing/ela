@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/CharellKing/ela/config"
-	"github.com/CharellKing/ela/utils"
 	elasticsearch6 "github.com/elastic/go-elasticsearch/v6"
 	"github.com/elastic/go-elasticsearch/v6/esapi"
 	"github.com/mitchellh/mapstructure"
@@ -142,13 +141,6 @@ func (es *V6) NextScroll(ctx context.Context, scrollId string, scrollTime uint) 
 		hitDocs = append(hitDocs, &hitDoc)
 	}
 
-	if len(hitDocs) <= 0 {
-		if scrollResult.ScrollId != "" {
-			if _, err := es.Client.ClearScroll(es.Client.ClearScroll.WithScrollID(scrollResult.ScrollId)); err != nil {
-				utils.GetLogger(ctx).WithError(err).WithField("scrollId", scrollResult.ScrollId).Error("clear scroll")
-			}
-		}
-	}
 	return &ScrollResult{
 		Total:    uint64(scrollResult.Hits.Total),
 		Docs:     hitDocs,

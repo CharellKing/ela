@@ -7,11 +7,10 @@ import (
 	"encoding/json"
 	"github.com/CharellKing/ela/config"
 	es2 "github.com/CharellKing/ela/pkg/es"
-	lop "github.com/samber/lo/parallel"
-
 	"github.com/CharellKing/ela/utils"
 	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
+	lop "github.com/samber/lo/parallel"
 	"github.com/spf13/cast"
 	"strings"
 	"sync"
@@ -161,17 +160,6 @@ func (m *Migrator) CopyIndexSettings(force bool) error {
 	return nil
 }
 
-func (m *Migrator) ConvertHashDiffToDocs(diffs []utils.HashDiff) []*es2.Doc {
-	var docs []*es2.Doc
-	for _, diff := range diffs {
-		docs = append(docs, &es2.Doc{
-			ID:   diff.Id,
-			Type: diff.Type,
-		})
-	}
-	return docs
-}
-
 func getQueryMap(docIds []string) map[string]interface{} {
 	return map[string]interface{}{
 		"query": map[string]interface{}{
@@ -271,6 +259,8 @@ func (m *Migrator) getKeywordFields() ([]string, error) {
 }
 
 func (m *Migrator) getDocHash(doc *es2.Doc) string {
+	doc.Source = utils.SanitizeData(doc.Source).(map[string]interface{})
+
 	jsonData, _ := json.Marshal(doc.Source)
 	hash := md5.Sum(jsonData)
 	return hex.EncodeToString(hash[:])
@@ -348,8 +338,10 @@ func (m *Migrator) compare() (chan *es2.Doc, chan utils.Errs) {
 				targetDocHashMap[targetResult.ID] = sourceResult.Hash
 			}
 
-			utils.GetLogger(m.GetCtx()).WithField("sourceProgress", cast.ToFloat32(sourceCount)/cast.ToFloat32(sourceTotal)).
-				WithField("targetProgress", cast.ToFloat32(targetCount)/cast.ToFloat32(targetTotal)).Debug("compare progress")
+			sourceProgress := cast.ToFloat32(sourceCount) / cast.ToFloat32(sourceTotal)
+			targetProgress := cast.ToFloat32(targetCount) / cast.ToFloat32(targetTotal)
+			utils.GetLogger(m.GetCtx()).Debugf("compare source progress %.4f, target progress %.4f",
+				sourceProgress, targetProgress)
 
 			if sourceResult != nil {
 				targetHashValue, ok := targetDocHashMap[sourceResult.ID]
@@ -471,33 +463,46 @@ func (m *Migrator) Sync(force bool) error {
 	return nil
 }
 
-func (m *Migrator) searchSingleSlice(wg *sync.WaitGroup, es es2.ES, index string, query map[string]interface{}, sortFields []string,
-	sliceId *uint, sliceSize *uint, docCh chan *es2.Doc, errCh chan error, needHash bool) uint64 {
-	scrollResult, err := es.NewScroll(index, &es2.ScrollOption{
-		Query:      query,
-		SortFields: sortFields,
-		ScrollSize: m.ScrollSize,
-		ScrollTime: m.ScrollTime,
-		SliceId:    sliceId,
-		SliceSize:  sliceSize,
-	})
+func (m *Migrator) searchSingleSlice(wg *sync.WaitGroup, totalWg *sync.WaitGroup, total *atomic.Uint64, es es2.ES,
+	index string, query map[string]interface{}, sortFields []string,
+	sliceId *uint, sliceSize *uint, docCh chan *es2.Doc, errCh chan error, needHash bool) {
 
-	if scrollResult == nil {
-		return 0
-	}
-
-	wg.Add(1)
 	utils.GoRecovery(m.GetCtx(), func() {
+		var (
+			scrollResult *es2.ScrollResult
+			err          error
+		)
 		defer func() {
 			wg.Done()
-			if err := es.ClearScroll(scrollResult.ScrollId); err != nil {
-				utils.GetLogger(m.GetCtx()).WithError(err).Error("clear scroll")
+			if scrollResult != nil {
+				if err := es.ClearScroll(scrollResult.ScrollId); err != nil {
+					utils.GetLogger(m.GetCtx()).WithError(err).Error("clear scroll")
+				}
 			}
 		}()
 
-		if err != nil {
-			errCh <- errors.WithStack(err)
-		}
+		func() {
+			defer totalWg.Done()
+			scrollResult, err = es.NewScroll(index, &es2.ScrollOption{
+				Query:      query,
+				SortFields: sortFields,
+				ScrollSize: m.ScrollSize,
+				ScrollTime: m.ScrollTime,
+				SliceId:    sliceId,
+				SliceSize:  sliceSize,
+			})
+
+			if err != nil {
+				utils.GetLogger(m.GetCtx()).Errorf("searchSingleSlice error: %+v", err)
+				errCh <- errors.WithStack(err)
+			}
+
+			if scrollResult == nil {
+				return
+			}
+
+			total.Add(cast.ToUint64(scrollResult.Total))
+		}()
 
 		for {
 			if needHash {
@@ -514,33 +519,39 @@ func (m *Migrator) searchSingleSlice(wg *sync.WaitGroup, es es2.ES, index string
 				break
 			}
 			if scrollResult, err = es.NextScroll(m.GetCtx(), scrollResult.ScrollId, m.ScrollTime); err != nil {
+				utils.GetLogger(m.GetCtx()).Errorf("searchSingleSlice error: %+v", err)
 				errCh <- errors.WithStack(err)
 			}
 		}
 	})
-
-	return scrollResult.Total
 }
 
 func (m *Migrator) search(es es2.ES, index string, query map[string]interface{},
 	sortFields []string, errCh chan error, needHash bool) (chan *es2.Doc, uint64) {
 	docCh := make(chan *es2.Doc, m.BufferCount)
 	var wg sync.WaitGroup
-	var total uint64
+	var total atomic.Uint64
+	var waitTotal sync.WaitGroup
+
 	if m.SliceSize <= 1 {
 		wg.Add(1)
-		total = m.searchSingleSlice(&wg, es, index, query, sortFields, nil, nil, docCh, errCh, needHash)
+		waitTotal.Add(1)
+		m.searchSingleSlice(&wg, &waitTotal, &total, es, index, query, sortFields, nil, nil, docCh, errCh, needHash)
 	} else {
 		for i := uint(0); i < m.SliceSize; i++ {
 			idx := i
-			total += m.searchSingleSlice(&wg, es, index, query, sortFields, &idx, &m.SliceSize, docCh, errCh, needHash)
+			wg.Add(1)
+			waitTotal.Add(1)
+			m.searchSingleSlice(&wg, &waitTotal, &total, es, index, query, sortFields, &idx, &m.SliceSize, docCh, errCh, needHash)
 		}
 	}
 	utils.GoRecovery(m.GetCtx(), func() {
 		wg.Wait()
 		close(docCh)
 	})
-	return docCh, total
+
+	waitTotal.Wait()
+	return docCh, total.Load()
 }
 
 func (m *Migrator) singleBulkWorker(doc <-chan *es2.Doc, total uint64, count *atomic.Uint64,
@@ -552,7 +563,7 @@ func (m *Migrator) singleBulkWorker(doc <-chan *es2.Doc, total uint64, count *at
 		}
 
 		count.Add(1)
-		utils.GetLogger(m.GetCtx()).Debugf("bulk progress %+v",
+		utils.GetLogger(m.GetCtx()).Debugf("bulk progress %.4f",
 			cast.ToFloat32(count.Load())/cast.ToFloat32(total))
 
 		switch operation {

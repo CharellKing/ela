@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/CharellKing/ela/config"
-	"github.com/CharellKing/ela/utils"
 	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/cast"
 	"io"
@@ -169,13 +168,6 @@ func (es *V8) NextScroll(ctx context.Context, scrollId string, scrollTime uint) 
 		hitDocs = append(hitDocs, &hitDoc)
 	}
 
-	if len(hitDocs) <= 0 {
-		if scrollResult.ScrollId != "" {
-			if _, err := es.Client.ClearScroll(es.Client.ClearScroll.WithScrollID(scrollResult.ScrollId)); err != nil {
-				utils.GetLogger(ctx).WithError(err).WithField("scrollId", scrollResult.ScrollId).Error("clear scroll")
-			}
-		}
-	}
 	return &ScrollResult{
 		Total:    uint64(scrollResult.Hits.Total.Value),
 		Docs:     hitDocs,

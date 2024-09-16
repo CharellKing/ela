@@ -1,6 +1,7 @@
 package es
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -52,9 +53,9 @@ type ES interface {
 	NextScroll(ctx context.Context, scrollId string, scrollTime uint) (*ScrollResult, error)
 	ClearScroll(scrollId string) error
 
-	BulkInsert(index string, hitDocs []*Doc) error
-	BulkUpdate(index string, hitDocs []*Doc) error
-	BulkDelete(index string, hitDocs []*Doc) error
+	BulkBody(index string, buf *bytes.Buffer, doc *Doc) error
+	Bulk(buf *bytes.Buffer) error
+
 	GetIndexMappingAndSetting(index string) (IESSettings, error)
 
 	CreateIndex(esSetting IESSettings) error

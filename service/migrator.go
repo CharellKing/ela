@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
@@ -25,7 +26,6 @@ type Migrator struct {
 
 	IndexPair config.IndexPair
 
-	ScrollSize uint
 	ScrollTime uint
 
 	SliceSize uint
@@ -33,6 +33,8 @@ type Migrator struct {
 	BufferCount uint
 
 	WriteParallel uint
+
+	WriteSize uint
 }
 
 func NewMigrator(ctx context.Context, srcConfig *config.ESConfig, dstConfig *config.ESConfig) (*Migrator, error) {
@@ -53,11 +55,11 @@ func NewMigrator(ctx context.Context, srcConfig *config.ESConfig, dstConfig *con
 		ctx:           ctx,
 		SourceES:      srcES,
 		TargetES:      dstES,
-		ScrollSize:    defaultScrollSize,
 		ScrollTime:    defaultScrollTime,
 		SliceSize:     defaultSliceSize,
 		BufferCount:   defaultBufferCount,
 		WriteParallel: defaultWriteParallel,
+		WriteSize:     defaultWriteSize,
 	}, nil
 }
 
@@ -74,25 +76,11 @@ func (m *Migrator) WithIndexPair(indexPair config.IndexPair) *Migrator {
 		SourceES:      m.SourceES,
 		TargetES:      m.TargetES,
 		IndexPair:     indexPair,
-		ScrollSize:    m.ScrollSize,
 		ScrollTime:    m.ScrollTime,
 		SliceSize:     m.SliceSize,
 		BufferCount:   m.BufferCount,
 		WriteParallel: m.WriteParallel,
-	}
-}
-
-func (m *Migrator) WithScrollSize(scrollSize uint) *Migrator {
-	return &Migrator{
-		ctx:           m.ctx,
-		SourceES:      m.SourceES,
-		TargetES:      m.TargetES,
-		IndexPair:     m.IndexPair,
-		ScrollSize:    scrollSize,
-		ScrollTime:    m.ScrollTime,
-		SliceSize:     m.SliceSize,
-		BufferCount:   m.BufferCount,
-		WriteParallel: m.WriteParallel,
+		WriteSize:     m.WriteSize,
 	}
 }
 
@@ -102,11 +90,11 @@ func (m *Migrator) WithScrollTime(scrollTime uint) *Migrator {
 		SourceES:      m.SourceES,
 		TargetES:      m.TargetES,
 		IndexPair:     m.IndexPair,
-		ScrollSize:    m.ScrollSize,
 		ScrollTime:    scrollTime,
 		SliceSize:     m.SliceSize,
 		BufferCount:   m.BufferCount,
 		WriteParallel: m.WriteParallel,
+		WriteSize:     m.WriteSize,
 	}
 }
 
@@ -116,11 +104,11 @@ func (m *Migrator) WithSliceSize(sliceSize uint) *Migrator {
 		SourceES:      m.SourceES,
 		TargetES:      m.TargetES,
 		IndexPair:     m.IndexPair,
-		ScrollSize:    m.ScrollSize,
 		ScrollTime:    m.ScrollTime,
 		SliceSize:     sliceSize,
 		BufferCount:   m.BufferCount,
 		WriteParallel: m.WriteParallel,
+		WriteSize:     m.WriteSize,
 	}
 }
 
@@ -130,11 +118,25 @@ func (m *Migrator) WithBufferCount(sliceSize uint) *Migrator {
 		SourceES:      m.SourceES,
 		TargetES:      m.TargetES,
 		IndexPair:     m.IndexPair,
-		ScrollSize:    m.ScrollSize,
 		ScrollTime:    m.ScrollTime,
 		SliceSize:     m.SliceSize,
 		BufferCount:   sliceSize,
 		WriteParallel: m.WriteParallel,
+		WriteSize:     m.WriteSize,
+	}
+}
+
+func (m *Migrator) WithWriteSize(writeSize uint) *Migrator {
+	return &Migrator{
+		ctx:           m.ctx,
+		SourceES:      m.SourceES,
+		TargetES:      m.TargetES,
+		IndexPair:     m.IndexPair,
+		ScrollTime:    m.ScrollTime,
+		SliceSize:     m.SliceSize,
+		BufferCount:   m.BufferCount,
+		WriteParallel: m.WriteParallel,
+		WriteSize:     writeSize,
 	}
 }
 
@@ -335,7 +337,7 @@ func (m *Migrator) compare() (chan *es2.Doc, chan utils.Errs) {
 
 			if targetResult != nil {
 				targetCount++
-				targetDocHashMap[targetResult.ID] = sourceResult.Hash
+				targetDocHashMap[targetResult.ID] = targetResult.Hash
 			}
 
 			sourceProgress := cast.ToFloat32(sourceCount) / cast.ToFloat32(sourceTotal)
@@ -486,7 +488,7 @@ func (m *Migrator) searchSingleSlice(wg *sync.WaitGroup, totalWg *sync.WaitGroup
 			scrollResult, err = es.NewScroll(index, &es2.ScrollOption{
 				Query:      query,
 				SortFields: sortFields,
-				ScrollSize: m.ScrollSize,
+				ScrollSize: m.BufferCount,
 				ScrollTime: m.ScrollTime,
 				SliceId:    sliceId,
 				SliceSize:  sliceSize,
@@ -515,7 +517,7 @@ func (m *Migrator) searchSingleSlice(wg *sync.WaitGroup, totalWg *sync.WaitGroup
 				docCh <- doc
 			}
 
-			if len(scrollResult.Docs) < cast.ToInt(m.ScrollSize) {
+			if len(scrollResult.Docs) < cast.ToInt(m.BufferCount) {
 				break
 			}
 			if scrollResult, err = es.NextScroll(m.GetCtx(), scrollResult.ScrollId, m.ScrollTime); err != nil {
@@ -556,6 +558,7 @@ func (m *Migrator) search(es es2.ES, index string, query map[string]interface{},
 
 func (m *Migrator) singleBulkWorker(doc <-chan *es2.Doc, total uint64, count *atomic.Uint64,
 	operation es2.Operation, errCh chan error) {
+	var buf bytes.Buffer
 	for {
 		v, ok := <-doc
 		if !ok {
@@ -568,19 +571,31 @@ func (m *Migrator) singleBulkWorker(doc <-chan *es2.Doc, total uint64, count *at
 
 		switch operation {
 		case es2.OperationCreate:
-			if err := m.TargetES.BulkInsert(m.IndexPair.TargetIndex, []*es2.Doc{v}); err != nil {
+			if err := m.TargetES.BulkBody(m.IndexPair.TargetIndex, &buf, v); err != nil {
 				errCh <- errors.WithStack(err)
 			}
 		case es2.OperationUpdate:
-			if err := m.TargetES.BulkUpdate(m.IndexPair.TargetIndex, []*es2.Doc{v}); err != nil {
+			if err := m.TargetES.BulkBody(m.IndexPair.TargetIndex, &buf, v); err != nil {
 				errCh <- errors.WithStack(err)
 			}
 		case es2.OperationDelete:
-			if err := m.TargetES.BulkDelete(m.IndexPair.TargetIndex, []*es2.Doc{v}); err != nil {
+			if err := m.TargetES.BulkBody(m.IndexPair.TargetIndex, &buf, v); err != nil {
 				errCh <- errors.WithStack(err)
 			}
 		default:
 			utils.GetLogger(m.ctx).Error("unknown operation")
+		}
+
+		if buf.Len() >= cast.ToInt(m.WriteSize)*1024*1024 {
+			if err := m.TargetES.Bulk(&buf); err != nil {
+				errCh <- errors.WithStack(err)
+			}
+		}
+	}
+
+	if buf.Len() > 0 {
+		if err := m.TargetES.Bulk(&buf); err != nil {
+			errCh <- errors.WithStack(err)
 		}
 	}
 }

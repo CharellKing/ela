@@ -256,29 +256,57 @@ func (es *V7) GetIndexSettings(index string) (map[string]interface{}, error) {
 	return indexSetting, nil
 }
 
-func (es *V7) BulkInsert(index string, hitDocs []*Doc) error {
-	var buf bytes.Buffer
-	for _, doc := range hitDocs {
-		meta := map[string]interface{}{
-			"index": map[string]interface{}{
-				"_index": index,
-				"_id":    doc.ID,
-			},
+func (es *V7) BulkBody(index string, buf *bytes.Buffer, doc *Doc) error {
+	action := ""
+	var body map[string]interface{}
+
+	switch doc.Op {
+	case OperationCreate:
+		action = "index"
+		body = doc.Source
+	case OperationUpdate:
+		action = "update"
+		body = map[string]interface{}{
+			doc.Type: doc.Source,
 		}
-		metaBytes, _ := json.Marshal(meta)
-		buf.Write(metaBytes)
-		buf.WriteByte('\n')
-		dataBytes, _ := json.Marshal(doc.Source)
+	case OperationDelete:
+		action = "delete"
+	default:
+		return fmt.Errorf("unknow action %+v", doc.Op)
+	}
+
+	meta := map[string]interface{}{
+		action: map[string]interface{}{
+			"_index": index,
+			"_id":    doc.ID,
+		},
+	}
+
+	metaBytes, _ := json.Marshal(meta)
+	buf.Write(metaBytes)
+	buf.WriteByte('\n')
+
+	if len(body) > 0 {
+		dataBytes, _ := json.Marshal(body)
 		buf.Write(dataBytes)
 		buf.WriteByte('\n')
 	}
+	return nil
+}
 
+func (es *V7) Bulk(buf *bytes.Buffer) error {
+	// Execute the bulk request
 	res, err := es.Client.Bulk(bytes.NewReader(buf.Bytes()))
 	if err != nil {
 		return errors.WithStack(err)
 	}
+	defer func() {
+		_ = res.Body.Close()
+	}()
+
+	// Handle the response
 	if res.IsError() {
-		return errors.New(res.String())
+		return errors.WithStack(fmt.Errorf("error executing bulk update: %s", res.String()))
 	}
 	return nil
 }
@@ -344,90 +372,6 @@ func (es *V7) DeleteIndex(index string) error {
 
 	if res.IsError() {
 		return errors.New(res.String())
-	}
-
-	return nil
-}
-
-func (es *V7) BulkUpdate(index string, hitDocs []*Doc) error {
-	var buf bytes.Buffer
-
-	for _, doc := range hitDocs {
-		// Prepare the metadata for the update action
-		meta := map[string]interface{}{
-			"update": map[string]interface{}{
-				"_index": index,
-				"_id":    doc.ID,
-				"_type":  doc.Type,
-			},
-		}
-		metaBytes, err := json.Marshal(meta)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		buf.Write(metaBytes)
-		buf.WriteByte('\n')
-
-		// Prepare the document data for update
-		docData := map[string]interface{}{
-			doc.Type: doc.Source,
-		}
-		docBytes, err := json.Marshal(docData)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		buf.Write(docBytes)
-		buf.WriteByte('\n')
-	}
-
-	// Execute the bulk request
-	res, err := es.Client.Bulk(bytes.NewReader(buf.Bytes()), es.Client.Bulk.WithIndex(index))
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	defer func() {
-		_ = res.Body.Close()
-	}()
-
-	// Handle the response
-	if res.IsError() {
-		return fmt.Errorf("error executing bulk update: %s", res.String())
-	}
-
-	return nil
-}
-
-func (es *V7) BulkDelete(index string, hitDocs []*Doc) error {
-	var buf bytes.Buffer
-
-	for _, doc := range hitDocs {
-		meta := map[string]interface{}{
-			"delete": map[string]interface{}{
-				"_index": index,
-				"_id":    doc.ID,
-				"_type":  doc.Type,
-			},
-		}
-		metaBytes, err := json.Marshal(meta)
-		if err != nil {
-			return errors.WithStack(err)
-		}
-		buf.Write(metaBytes)
-		buf.WriteByte('\n')
-	}
-
-	// Execute the bulk request
-	res, err := es.Client.Bulk(bytes.NewReader(buf.Bytes()), es.Client.Bulk.WithIndex(index))
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	defer func() {
-		_ = res.Body.Close()
-	}()
-
-	// Handle the response
-	if res.IsError() {
-		return fmt.Errorf("error executing bulk delete: %s", res.String())
 	}
 
 	return nil

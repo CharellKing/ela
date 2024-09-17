@@ -14,11 +14,10 @@ import (
 	"sync"
 )
 
-const defaultScrollSize = 1000
 const defaultParallelism = 12
 const defaultScrollTime = 10
 const defaultSliceSize = 20
-const defaultBufferCount = 500
+const defaultBufferCount = 1000
 const defaultWriteParallel = 10
 const defaultWriteSize = 5 // MB
 
@@ -33,8 +32,6 @@ type BulkMigrator struct {
 	IndexPairMap map[string]*config.IndexPair
 
 	Error error
-
-	ScrollSize uint
 
 	ScrollTime uint
 
@@ -58,7 +55,6 @@ func NewBulkMigratorWithES(ctx context.Context, sourceES, targetES es2.ES) *Bulk
 		Parallelism:   defaultParallelism,
 		IndexPairMap:  make(map[string]*config.IndexPair),
 		Error:         nil,
-		ScrollSize:    defaultScrollSize,
 		ScrollTime:    defaultScrollTime,
 		SliceSize:     defaultSliceSize,
 		BufferCount:   defaultBufferCount,
@@ -101,7 +97,6 @@ func (m *BulkMigrator) WithIndexPairs(indexPairs ...*config.IndexPair) *BulkMigr
 		Parallelism:   m.Parallelism,
 		IndexPairMap:  m.IndexPairMap,
 		Error:         m.Error,
-		ScrollSize:    m.ScrollSize,
 		ScrollTime:    m.ScrollTime,
 		SliceSize:     m.SliceSize,
 		BufferCount:   m.BufferCount,
@@ -123,30 +118,6 @@ func (m *BulkMigrator) WithIndexPairs(indexPairs ...*config.IndexPair) *BulkMigr
 	return newBulkMigrator
 }
 
-func (m *BulkMigrator) WithScrollSize(scrollSize uint) *BulkMigrator {
-	if m.Error != nil {
-		return m
-	}
-
-	if scrollSize == 0 {
-		scrollSize = defaultScrollSize
-	}
-	return &BulkMigrator{
-		ctx:           m.ctx,
-		SourceES:      m.SourceES,
-		TargetES:      m.TargetES,
-		Parallelism:   m.Parallelism,
-		IndexPairMap:  m.IndexPairMap,
-		Error:         m.Error,
-		ScrollSize:    scrollSize,
-		ScrollTime:    m.ScrollTime,
-		SliceSize:     m.SliceSize,
-		BufferCount:   m.BufferCount,
-		WriteParallel: m.WriteParallel,
-		WriteSize:     m.WriteSize,
-	}
-}
-
 func (m *BulkMigrator) WithScrollTime(scrollTime uint) *BulkMigrator {
 	if m.Error != nil {
 		return m
@@ -162,7 +133,6 @@ func (m *BulkMigrator) WithScrollTime(scrollTime uint) *BulkMigrator {
 		Parallelism:   m.Parallelism,
 		IndexPairMap:  m.IndexPairMap,
 		Error:         m.Error,
-		ScrollSize:    m.ScrollSize,
 		ScrollTime:    scrollTime,
 		SliceSize:     m.SliceSize,
 		BufferCount:   m.BufferCount,
@@ -186,7 +156,6 @@ func (m *BulkMigrator) WithSliceSize(sliceSize uint) *BulkMigrator {
 		Parallelism:   m.Parallelism,
 		IndexPairMap:  m.IndexPairMap,
 		Error:         m.Error,
-		ScrollSize:    m.ScrollSize,
 		ScrollTime:    m.ScrollTime,
 		SliceSize:     sliceSize,
 		BufferCount:   m.BufferCount,
@@ -210,7 +179,6 @@ func (m *BulkMigrator) WithBufferCount(bufferCount uint) *BulkMigrator {
 		Parallelism:   m.Parallelism,
 		IndexPairMap:  m.IndexPairMap,
 		Error:         m.Error,
-		ScrollSize:    m.ScrollSize,
 		ScrollTime:    m.ScrollTime,
 		SliceSize:     m.SliceSize,
 		BufferCount:   bufferCount,
@@ -234,7 +202,6 @@ func (m *BulkMigrator) WithWriteParallel(writeParallel uint) *BulkMigrator {
 		Parallelism:   m.Parallelism,
 		IndexPairMap:  m.IndexPairMap,
 		Error:         m.Error,
-		ScrollSize:    m.ScrollSize,
 		ScrollTime:    m.ScrollTime,
 		SliceSize:     m.SliceSize,
 		BufferCount:   m.BufferCount,
@@ -259,7 +226,6 @@ func (m *BulkMigrator) WithWriteSize(writeSize uint) *BulkMigrator {
 		Parallelism:   m.Parallelism,
 		IndexPairMap:  m.IndexPairMap,
 		Error:         m.Error,
-		ScrollSize:    m.ScrollSize,
 		ScrollTime:    m.ScrollTime,
 		SliceSize:     m.SliceSize,
 		BufferCount:   m.BufferCount,
@@ -300,7 +266,6 @@ func (m *BulkMigrator) WithPatternIndexes(pattern string) *BulkMigrator {
 		Parallelism:   m.Parallelism,
 		IndexPairMap:  m.IndexPairMap,
 		Error:         m.Error,
-		ScrollSize:    m.ScrollSize,
 		ScrollTime:    m.ScrollTime,
 		SliceSize:     m.SliceSize,
 		BufferCount:   m.BufferCount,
@@ -348,7 +313,6 @@ func (m *BulkMigrator) WithParallelism(parallelism uint) *BulkMigrator {
 		Parallelism:   parallelism,
 		IndexPairMap:  m.IndexPairMap,
 		Error:         m.Error,
-		ScrollSize:    m.ScrollSize,
 		ScrollTime:    m.ScrollTime,
 		SliceSize:     m.SliceSize,
 		BufferCount:   m.BufferCount,

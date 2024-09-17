@@ -25,9 +25,9 @@ func NewTaskWithES(ctx context.Context, taskCfg *config.TaskCfg, sourceES, targe
 	ctx = utils.SetCtxKeyTaskAction(ctx, string(taskCfg.TaskAction))
 
 	bulkMigrator := NewBulkMigratorWithES(ctx, sourceES, targetES)
-	bulkMigrator = bulkMigrator.WithScrollSize(taskCfg.ScrollSize).WithIndexPairs(taskCfg.IndexPairs...).
+	bulkMigrator = bulkMigrator.WithIndexPairs(taskCfg.IndexPairs...).
 		WithParallelism(taskCfg.Parallelism).WithScrollTime(taskCfg.ScrollTime).WithSliceSize(taskCfg.SliceSize).
-		WithBufferCount(taskCfg.BufferCount).WithWriteParallel(taskCfg.WriteParallelism)
+		WithBufferCount(taskCfg.BufferCount).WithWriteParallel(taskCfg.WriteParallelism).WithWriteSize(taskCfg.WriteSize)
 	if taskCfg.IndexPattern != nil {
 		bulkMigrator = bulkMigrator.WithPatternIndexes(*taskCfg.IndexPattern)
 	}

@@ -205,7 +205,39 @@ func (es *V8) GetIndexMappingAndSetting(index string) (IESSettings, error) {
 		return nil, errors.WithStack(err)
 	}
 
-	return NewV8Settings(setting, mapping, index), nil
+	aliases, err := es.GetIndexAliases(index)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return NewV8Settings(setting, mapping, aliases, index), nil
+}
+
+func (es *V8) GetIndexAliases(index string) (map[string]interface{}, error) {
+	// Get alias configuration
+	aliasRes, err := es.Client.Indices.GetAlias(es.Client.Indices.GetAlias.WithIndex(index))
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	defer func() {
+		_ = aliasRes.Body.Close()
+	}()
+
+	if aliasRes.IsError() {
+		return nil, fmt.Errorf("error: %s", aliasRes.String())
+	}
+
+	bodyBytes, err := io.ReadAll(aliasRes.Body)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	indexAliases := make(map[string]interface{})
+	if err := json.Unmarshal(bodyBytes, &indexAliases); err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return indexAliases, nil
 }
 
 func (es *V8) GetIndexMapping(index string) (map[string]interface{}, error) {
@@ -262,6 +294,7 @@ func (es *V8) CreateIndex(esSetting IESSettings) error {
 	indexBodyMap := lo.Assign(
 		esSetting.GetSettings(),
 		esSetting.GetMappings(),
+		esSetting.GetAliases(),
 	)
 
 	indexSettingsBytes, _ := json.Marshal(indexBodyMap)
@@ -283,6 +316,7 @@ func (es *V8) CreateIndex(esSetting IESSettings) error {
 	if res.IsError() {
 		return fmt.Errorf("error creating index: %s", res.String())
 	}
+
 	return nil
 }
 

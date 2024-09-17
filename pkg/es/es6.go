@@ -149,6 +149,33 @@ func (es *V6) NextScroll(ctx context.Context, scrollId string, scrollTime uint) 
 	}, nil
 }
 
+func (es *V6) GetIndexAliases(index string) (map[string]interface{}, error) {
+	// Get alias configuration
+	aliasRes, err := es.Client.Indices.GetAlias(es.Client.Indices.GetAlias.WithIndex(index))
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	defer func() {
+		_ = aliasRes.Body.Close()
+	}()
+
+	if aliasRes.IsError() {
+		return nil, fmt.Errorf("error: %s", aliasRes.String())
+	}
+
+	bodyBytes, err := io.ReadAll(aliasRes.Body)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	indexAliases := make(map[string]interface{})
+	if err := json.Unmarshal(bodyBytes, &indexAliases); err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return indexAliases, nil
+}
+
 func (es *V6) GetIndexMappingAndSetting(index string) (IESSettings, error) {
 	// Get settings
 	setting, err := es.GetIndexSettings(index)
@@ -161,7 +188,11 @@ func (es *V6) GetIndexMappingAndSetting(index string) (IESSettings, error) {
 		return nil, errors.WithStack(err)
 	}
 
-	return NewV6Settings(setting, mapping, index), nil
+	aliases, err := es.GetIndexAliases(index)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return NewV6Settings(setting, mapping, aliases, index), nil
 }
 
 func (es *V6) ClearScroll(scrollId string) error {

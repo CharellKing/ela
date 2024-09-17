@@ -49,7 +49,7 @@ type ES interface {
 	IndexExisted(index string) (bool, error)
 	GetIndexes() ([]string, error)
 
-	NewScroll(index string, option *ScrollOption) (*ScrollResult, error)
+	NewScroll(ctx context.Context, index string, option *ScrollOption) (*ScrollResult, error)
 	NextScroll(ctx context.Context, scrollId string, scrollTime uint) (*ScrollResult, error)
 	ClearScroll(scrollId string) error
 

@@ -25,6 +25,7 @@ import (
 type V8 struct {
 	*elasticsearch8.Client
 	ClusterVersion string
+	Settings       IESSettings
 }
 
 func NewESV8(esConfig *config.ESConfig, clusterVersion string) (*V8, error) {
@@ -81,7 +82,7 @@ type ScrollResultV8 struct {
 	} `json:"_shards,omitempty"`
 }
 
-func (es *V8) NewScroll(index string, option *ScrollOption) (*ScrollResult, error) {
+func (es *V8) NewScroll(ctx context.Context, index string, option *ScrollOption) (*ScrollResult, error) {
 	scrollSearchOptions := []func(*esapi.SearchRequest){
 		es.Search.WithIndex(index),
 		es.Search.WithSize(cast.ToInt(option.ScrollSize)),

@@ -445,17 +445,14 @@ func (m *BulkMigrator) CopyIndexSettings(force bool) error {
 func (m *BulkMigrator) parallelRun(callback func(migrator *Migrator)) {
 	pool := pond.New(cast.ToInt(m.Parallelism), len(m.IndexPairMap))
 	for _, indexPair := range m.IndexPairMap {
-		newMigrator := &Migrator{
-			ctx:           m.ctx,
-			SourceES:      m.SourceES,
-			TargetES:      m.TargetES,
-			IndexPair:     *indexPair,
-			ScrollTime:    m.ScrollTime,
-			SliceSize:     m.SliceSize,
-			BufferCount:   m.BufferCount,
-			WriteParallel: m.WriteParallel,
-			WriteSize:     m.WriteSize,
-		}
+		newMigrator := NewMigrator(m.ctx, m.SourceES, m.TargetES)
+		newMigrator = newMigrator.WithIndexPair(*indexPair).
+			WithScrollTime(m.ScrollTime).
+			WithSliceSize(m.SliceSize).
+			WithBufferCount(m.BufferCount).
+			WithWriteParallel(m.WriteParallel).
+			WithWriteSize(m.WriteSize)
+
 		pool.Submit(func() {
 			callback(newMigrator)
 		})

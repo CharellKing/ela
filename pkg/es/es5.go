@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/CharellKing/ela/config"
+	"github.com/CharellKing/ela/utils"
 	"github.com/mitchellh/mapstructure"
+	lop "github.com/samber/lo/parallel"
 	"github.com/spf13/cast"
 	"io"
 	"log"
@@ -25,6 +27,7 @@ import (
 type V5 struct {
 	*elasticsearch5.Client
 	ClusterVersion string
+	Settings       IESSettings
 }
 
 func NewESV5(esConfig *config.ESConfig, clusterVersion string) (*V5, error) {
@@ -77,7 +80,30 @@ type ScrollResultV5 struct {
 	} `json:"_shards,omitempty"`
 }
 
-func (es *V5) NewScroll(index string, option *ScrollOption) (*ScrollResult, error) {
+func (es *V5) fixDatetimeFormatDate(ctx context.Context, doc *Doc) *Doc {
+	datetimeFields := utils.GetCtxKeyDateTimeFormatFixFields(ctx)
+
+	for fieldName, fieldValue := range doc.Source {
+		if datetimeFieldFormat, ok := datetimeFields[fieldName]; ok {
+			fieldValueStr := cast.ToString(fieldValue)
+			valueSections := strings.Split(fieldValueStr, ":")
+			formatSections := strings.Split(datetimeFieldFormat, ":")
+			if len(valueSections) == 3 {
+				format := fmt.Sprintf("%%0%dd", len(formatSections[3]))
+				valueSections = append(valueSections, fmt.Sprintf(format, 0))
+				doc.Source[fieldName] = strings.Join(valueSections, ":")
+			} else if len(valueSections) > 3 {
+				format := fmt.Sprintf("%%0%dd", len(formatSections[3]))
+				secondFraction := cast.ToInt(valueSections[3])
+				valueSections[3] = fmt.Sprintf(format, secondFraction)
+				doc.Source[fieldName] = strings.Join(valueSections, ":")
+			}
+		}
+	}
+	return doc
+}
+
+func (es *V5) NewScroll(ctx context.Context, index string, option *ScrollOption) (*ScrollResult, error) {
 	scrollSearchOptions := []func(*esapi.SearchRequest){
 		es.Search.WithIndex(index),
 		es.Search.WithSize(cast.ToInt(option.ScrollSize)),
@@ -124,12 +150,11 @@ func (es *V5) NewScroll(index string, option *ScrollOption) (*ScrollResult, erro
 		return nil, errors.WithStack(err)
 	}
 
-	var hitDocs []*Doc
-	for _, hit := range scrollResult.Hits.Docs {
+	hitDocs := lop.Map(scrollResult.Hits.Docs, func(hit interface{}, _ int) *Doc {
 		var hitDoc Doc
 		_ = mapstructure.Decode(hit, &hitDoc)
-		hitDocs = append(hitDocs, &hitDoc)
-	}
+		return es.fixDatetimeFormatDate(ctx, &hitDoc)
+	})
 
 	return &ScrollResult{
 		Total:    uint64(scrollResult.Hits.Total),
@@ -157,12 +182,11 @@ func (es *V5) NextScroll(ctx context.Context, scrollId string, scrollTime uint) 
 		return nil, errors.WithStack(err)
 	}
 
-	var hitDocs []*Doc
-	for _, hit := range scrollResult.Hits.Docs {
+	hitDocs := lop.Map(scrollResult.Hits.Docs, func(hit interface{}, _ int) *Doc {
 		var hitDoc Doc
 		_ = mapstructure.Decode(hit, &hitDoc)
-		hitDocs = append(hitDocs, &hitDoc)
-	}
+		return es.fixDatetimeFormatDate(ctx, &hitDoc)
+	})
 
 	return &ScrollResult{
 		Total:    uint64(scrollResult.Hits.Total),

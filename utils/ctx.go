@@ -15,6 +15,14 @@ const (
 	CtxKeyTaskName        CtxKey = "taskName"
 	CtxKeyTaskID          CtxKey = "taskId"
 	CtxKeyTaskAction      CtxKey = "taskAction"
+
+	CtxKeySourceIndexSetting CtxKey = "sourceIndexSetting"
+	CtxKeyTargetIndexSetting CtxKey = "targetIndexSetting"
+
+	CtxKeySourceFieldMap CtxKey = "sourceFieldMap"
+	CtxKeyTargetFieldMap CtxKey = "targetFieldMap"
+
+	CtxKeyDateTimeFormatFixFields CtxKey = "dateTimeFormatFixFields"
 )
 
 func GetCtxKeySourceESVersion(ctx context.Context) string {
@@ -71,4 +79,44 @@ func GetCtxKeyTaskAction(ctx context.Context) string {
 
 func SetCtxKeyTaskAction(ctx context.Context, action string) context.Context {
 	return context.WithValue(ctx, CtxKeyTaskAction, action)
+}
+
+func GetCtxKeySourceIndexSetting(ctx context.Context) interface{} {
+	return ctx.Value(CtxKeySourceIndexSetting)
+}
+
+func SetCtxKeySourceIndexSetting(ctx context.Context, setting interface{}) context.Context {
+	return context.WithValue(ctx, CtxKeySourceIndexSetting, setting)
+}
+
+func GetCtxKeyTargetIndexSetting(ctx context.Context) interface{} {
+	return ctx.Value(CtxKeyTargetIndexSetting)
+}
+
+func SetCtxKeyTargetIndexSetting(ctx context.Context, setting interface{}) context.Context {
+	return context.WithValue(ctx, CtxKeyTargetIndexSetting, setting)
+}
+
+func GetCtxKeySourceFieldMap(ctx context.Context) map[string]interface{} {
+	return ctx.Value(CtxKeySourceFieldMap).(map[string]interface{})
+}
+
+func SetCtxKeySourceFieldMap(ctx context.Context, fieldMap map[string]interface{}) context.Context {
+	return context.WithValue(ctx, CtxKeySourceFieldMap, fieldMap)
+}
+
+func GetCtxKeyTargetFieldMap(ctx context.Context) map[string]interface{} {
+	return ctx.Value(CtxKeyTargetFieldMap).(map[string]interface{})
+}
+
+func SetCtxKeyTargetFieldMap(ctx context.Context, fieldMap map[string]interface{}) context.Context {
+	return context.WithValue(ctx, CtxKeyTargetFieldMap, fieldMap)
+}
+
+func GetCtxKeyDateTimeFormatFixFields(ctx context.Context) map[string]string {
+	return ctx.Value(CtxKeyDateTimeFormatFixFields).(map[string]string)
+}
+
+func SetCtxKeyDateTimeFormatFixFields(ctx context.Context, fields map[string]string) context.Context {
+	return context.WithValue(ctx, CtxKeyDateTimeFormatFixFields, fields)
 }

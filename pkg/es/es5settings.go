@@ -113,9 +113,34 @@ func (v5 *V5Settings) ToESV7Mapping(_ string) map[string]interface{} {
 	return v5.ToESV8Mapping()
 }
 
+func (v5 *V5Settings) DateFieldSupportTimestamp(properties map[string]interface{}) map[string]interface{} {
+	fieldMap := cast.ToStringMap(properties["properties"])
+	for field, fieldAttr := range fieldMap {
+		fieldAttrMap := cast.ToStringMap(fieldAttr)
+		fieldType := cast.ToString(fieldAttrMap["type"])
+		if fieldType != "date" {
+			continue
+		}
+
+		fieldFormat := cast.ToString(fieldAttrMap["format"])
+		if fieldFormat != "yyyy-MM-dd HH:mm:ss" {
+			continue
+		}
+
+		fieldAttrMap["format"] = "yyyy-MM-dd HH:mm:ss||epoch_millis"
+
+		fieldMap[field] = fieldAttrMap
+	}
+
+	return map[string]interface{}{
+		"properties": fieldMap,
+	}
+}
+
 func (v5 *V5Settings) ToESV8Mapping() map[string]interface{} {
 	unwrappedMappings := v5.getUnwrappedMappings()
 	mergedProperties := v5.mergeUnWrappedMapping(unwrappedMappings)
+	mergedProperties = v5.DateFieldSupportTimestamp(mergedProperties)
 	return map[string]interface{}{
 		"mappings": mergedProperties,
 	}
@@ -163,4 +188,9 @@ func (v5 *V5Settings) GetSettings() map[string]interface{} {
 
 func (v5 *V5Settings) GetProperties() map[string]interface{} {
 	return v5.mergeUnWrappedMapping(v5.getUnwrappedMappings())
+}
+
+func (v5 *V5Settings) GetFieldMap() map[string]interface{} {
+	properties := v5.GetProperties()
+	return cast.ToStringMap(properties["properties"])
 }

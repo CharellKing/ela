@@ -20,4 +20,5 @@ type IESSettings interface {
 	GetMappings() map[string]interface{}
 	GetSettings() map[string]interface{}
 	GetProperties() map[string]interface{}
+	GetFieldMap() map[string]interface{}
 }

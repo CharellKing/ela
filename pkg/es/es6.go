@@ -24,6 +24,7 @@ import (
 type V6 struct {
 	*elasticsearch6.Client
 	ClusterVersion string
+	Settings       IESSettings
 }
 
 func NewESV6(esConfig *config.ESConfig, clusterVersion string) (*V6, error) {
@@ -54,7 +55,7 @@ func (es *V6) GetClusterVersion() string {
 	return es.ClusterVersion
 }
 
-func (es *V6) NewScroll(index string, option *ScrollOption) (*ScrollResult, error) {
+func (es *V6) NewScroll(ctx context.Context, index string, option *ScrollOption) (*ScrollResult, error) {
 	scrollSearchOptions := []func(*esapi.SearchRequest){
 		es.Search.WithIndex(index),
 		es.Search.WithSize(cast.ToInt(option.ScrollSize)),

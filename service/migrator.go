@@ -9,7 +9,6 @@ import (
 	"github.com/CharellKing/ela/config"
 	es2 "github.com/CharellKing/ela/pkg/es"
 	"github.com/CharellKing/ela/utils"
-	"github.com/jinzhu/copier"
 	"github.com/pkg/errors"
 	lop "github.com/samber/lo/parallel"
 	"github.com/spf13/cast"
@@ -19,6 +18,8 @@ import (
 )
 
 type Migrator struct {
+	err error
+
 	ctx context.Context
 
 	SourceES es2.ES
@@ -37,7 +38,7 @@ type Migrator struct {
 	WriteSize uint
 }
 
-func NewMigrator(ctx context.Context, srcConfig *config.ESConfig, dstConfig *config.ESConfig) (*Migrator, error) {
+func NewMigratorWithConfig(ctx context.Context, srcConfig *config.ESConfig, dstConfig *config.ESConfig) (*Migrator, error) {
 	srcES, err := es2.NewESV0(srcConfig).GetES()
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -48,10 +49,15 @@ func NewMigrator(ctx context.Context, srcConfig *config.ESConfig, dstConfig *con
 		return nil, errors.WithStack(err)
 	}
 
+	return NewMigrator(ctx, srcES, dstES), nil
+}
+
+func NewMigrator(ctx context.Context, srcES es2.ES, dstES es2.ES) *Migrator {
 	ctx = utils.SetCtxKeySourceESVersion(ctx, srcES.GetClusterVersion())
 	ctx = utils.SetCtxKeyTargetESVersion(ctx, dstES.GetClusterVersion())
 
 	return &Migrator{
+		err:           nil,
 		ctx:           ctx,
 		SourceES:      srcES,
 		TargetES:      dstES,
@@ -60,18 +66,61 @@ func NewMigrator(ctx context.Context, srcConfig *config.ESConfig, dstConfig *con
 		BufferCount:   defaultBufferCount,
 		WriteParallel: defaultWriteParallel,
 		WriteSize:     defaultWriteSize,
-	}, nil
+	}
 }
 
 func (m *Migrator) GetCtx() context.Context {
 	return m.ctx
 }
 
+func (m *Migrator) addDateTimeFixFields(ctx context.Context, fieldMap map[string]interface{}) context.Context {
+	if !strings.HasPrefix(m.SourceES.GetClusterVersion(), "5.") {
+		return ctx
+	}
+
+	dateTimeFixFields := make(map[string]string)
+	for fieldName, fieldAttrs := range fieldMap {
+		fieldAttrMap := cast.ToStringMap(fieldAttrs)
+		if cast.ToString(fieldAttrMap["type"]) == "date" {
+			format := cast.ToString(fieldAttrMap["format"])
+			if strings.HasPrefix(format, "yyyy-MM-dd HH:mm:ss:S") {
+				dateTimeFixFields[fieldName] = format
+			}
+		}
+	}
+
+	return utils.SetCtxKeyDateTimeFormatFixFields(ctx, dateTimeFixFields)
+}
+
 func (m *Migrator) WithIndexPair(indexPair config.IndexPair) *Migrator {
+	if m.err != nil {
+		return m
+	}
+
 	ctx := utils.SetCtxKeySourceIndex(m.ctx, indexPair.SourceIndex)
 	ctx = utils.SetCtxKeyTargetIndex(m.ctx, indexPair.TargetIndex)
 
+	var err error
+	sourceSetting, err := m.SourceES.GetIndexMappingAndSetting(indexPair.SourceIndex)
+	if err != nil {
+		m.err = errors.WithStack(err)
+		return m
+	}
+
+	targetSetting, err := m.SourceES.GetIndexMappingAndSetting(indexPair.TargetIndex)
+	if err != nil {
+		m.err = errors.WithStack(err)
+		return m
+	}
+
+	ctx = utils.SetCtxKeySourceIndexSetting(ctx, sourceSetting)
+	ctx = utils.SetCtxKeyTargetIndexSetting(ctx, targetSetting)
+	ctx = utils.SetCtxKeySourceFieldMap(ctx, sourceSetting.GetFieldMap())
+	ctx = utils.SetCtxKeyTargetFieldMap(ctx, targetSetting.GetFieldMap())
+	ctx = m.addDateTimeFixFields(ctx, sourceSetting.GetFieldMap())
+
 	return &Migrator{
+		err:           err,
 		ctx:           ctx,
 		SourceES:      m.SourceES,
 		TargetES:      m.TargetES,
@@ -85,6 +134,10 @@ func (m *Migrator) WithIndexPair(indexPair config.IndexPair) *Migrator {
 }
 
 func (m *Migrator) WithScrollTime(scrollTime uint) *Migrator {
+	if m.err != nil {
+		return m
+	}
+
 	return &Migrator{
 		ctx:           m.ctx,
 		SourceES:      m.SourceES,
@@ -99,6 +152,10 @@ func (m *Migrator) WithScrollTime(scrollTime uint) *Migrator {
 }
 
 func (m *Migrator) WithSliceSize(sliceSize uint) *Migrator {
+	if m.err != nil {
+		return m
+	}
+
 	return &Migrator{
 		ctx:           m.ctx,
 		SourceES:      m.SourceES,
@@ -113,6 +170,10 @@ func (m *Migrator) WithSliceSize(sliceSize uint) *Migrator {
 }
 
 func (m *Migrator) WithBufferCount(sliceSize uint) *Migrator {
+	if m.err != nil {
+		return m
+	}
+
 	return &Migrator{
 		ctx:           m.ctx,
 		SourceES:      m.SourceES,
@@ -126,7 +187,29 @@ func (m *Migrator) WithBufferCount(sliceSize uint) *Migrator {
 	}
 }
 
+func (m *Migrator) WithWriteParallel(writeParallel uint) *Migrator {
+	if m.err != nil {
+		return m
+	}
+
+	return &Migrator{
+		ctx:           m.ctx,
+		SourceES:      m.SourceES,
+		TargetES:      m.TargetES,
+		IndexPair:     m.IndexPair,
+		ScrollTime:    m.ScrollTime,
+		SliceSize:     m.SliceSize,
+		BufferCount:   m.BufferCount,
+		WriteParallel: writeParallel,
+		WriteSize:     m.WriteSize,
+	}
+}
+
 func (m *Migrator) WithWriteSize(writeSize uint) *Migrator {
+	if m.err != nil {
+		return m
+	}
+
 	return &Migrator{
 		ctx:           m.ctx,
 		SourceES:      m.SourceES,
@@ -141,6 +224,10 @@ func (m *Migrator) WithWriteSize(writeSize uint) *Migrator {
 }
 
 func (m *Migrator) CopyIndexSettings(force bool) error {
+	if m.err != nil {
+		return errors.WithStack(m.err)
+	}
+
 	existed, err := m.TargetES.IndexExisted(m.IndexPair.TargetIndex)
 	if err != nil {
 		return errors.WithStack(err)
@@ -173,6 +260,10 @@ func getQueryMap(docIds []string) map[string]interface{} {
 }
 
 func (m *Migrator) SyncDiff() (*DiffResult, error) {
+	if m.err != nil {
+		return nil, errors.WithStack(m.err)
+	}
+
 	var diffResult DiffResult
 
 	docCh, errsCh := m.compare()
@@ -233,15 +324,9 @@ func (m *Migrator) getESIndexFields(es es2.ES) (map[string]interface{}, error) {
 }
 
 func (m *Migrator) getKeywordFields() ([]string, error) {
-	sourceEsFieldMap, err := m.getESIndexFields(m.SourceES)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
+	sourceEsFieldMap := utils.GetCtxKeySourceFieldMap(m.ctx)
 
-	targetEsFieldMap, err := m.getESIndexFields(m.TargetES)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
+	targetEsFieldMap := utils.GetCtxKeyTargetFieldMap(m.ctx)
 
 	var keywordFields []string
 	for fieldName, fieldAttrs := range sourceEsFieldMap {
@@ -261,8 +346,6 @@ func (m *Migrator) getKeywordFields() ([]string, error) {
 }
 
 func (m *Migrator) getDocHash(doc *es2.Doc) string {
-	doc.Source = utils.SanitizeData(doc.Source).(map[string]interface{})
-
 	jsonData, _ := json.Marshal(doc.Source)
 	hash := md5.Sum(jsonData)
 	return hex.EncodeToString(hash[:])
@@ -428,6 +511,10 @@ func (diffResult *DiffResult) Percent() float64 {
 }
 
 func (m *Migrator) Compare() (*DiffResult, error) {
+	if m.err != nil {
+		return nil, errors.WithStack(m.err)
+	}
+
 	docCh, errsCh := m.compare()
 	var diffResult DiffResult
 	for {
@@ -455,6 +542,10 @@ func (m *Migrator) Compare() (*DiffResult, error) {
 }
 
 func (m *Migrator) Sync(force bool) error {
+	if m.err != nil {
+		return errors.WithStack(m.err)
+	}
+
 	utils.GetLogger(m.ctx).Debugf("sync with force: %+v", force)
 	if err := m.CopyIndexSettings(force); err != nil {
 		return errors.WithStack(err)
@@ -485,7 +576,7 @@ func (m *Migrator) searchSingleSlice(wg *sync.WaitGroup, totalWg *sync.WaitGroup
 
 		func() {
 			defer totalWg.Done()
-			scrollResult, err = es.NewScroll(index, &es2.ScrollOption{
+			scrollResult, err = es.NewScroll(m.ctx, index, &es2.ScrollOption{
 				Query:      query,
 				SortFields: sortFields,
 				ScrollSize: m.BufferCount,
@@ -566,8 +657,9 @@ func (m *Migrator) singleBulkWorker(doc <-chan *es2.Doc, total uint64, count *at
 		}
 
 		count.Add(1)
-		utils.GetLogger(m.GetCtx()).Debugf("bulk progress %.4f",
-			cast.ToFloat32(count.Load())/cast.ToFloat32(total))
+		percent := cast.ToFloat32(count.Load()) / cast.ToFloat32(total)
+
+		utils.GetLogger(m.GetCtx()).Debugf("bulk progress %.4f", percent)
 
 		switch operation {
 		case es2.OperationCreate:
@@ -636,29 +728,8 @@ func (m *Migrator) syncUpsert(query map[string]interface{}, operation es2.Operat
 	return errs.Ret()
 }
 
-func (m *Migrator) getTargetSetting(sourceSetting map[string]interface{}) map[string]interface{} {
-	var copySourceSetting map[string]interface{}
-	_ = copier.Copy(&copySourceSetting, sourceSetting)
-
-	return map[string]interface{}{
-		m.IndexPair.TargetIndex: copySourceSetting[m.IndexPair.SourceIndex],
-	}
-}
-
-func (m *Migrator) getTargetMapping(sourceMapping map[string]interface{}) map[string]interface{} {
-	var copySourceMapping map[string]interface{}
-	_ = copier.Copy(&copySourceMapping, sourceMapping)
-
-	return map[string]interface{}{
-		m.IndexPair.TargetIndex: copySourceMapping[m.IndexPair.SourceIndex],
-	}
-}
-
 func (m *Migrator) copyIndexSettings() error {
-	sourceESSetting, err := m.SourceES.GetIndexMappingAndSetting(m.IndexPair.SourceIndex)
-	if err != nil {
-		return errors.WithStack(err)
-	}
+	sourceESSetting := utils.GetCtxKeySourceIndexSetting(m.ctx).(es2.IESSettings)
 
 	targetESSetting := m.GetTargetESSetting(sourceESSetting)
 

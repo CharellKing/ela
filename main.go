@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/CharellKing/ela/config"
-	"github.com/CharellKing/ela/service"
-	"github.com/CharellKing/ela/utils"
+	"github.com/CharellKing/ela-lib/config"
+	"github.com/CharellKing/ela-lib/service"
+	"github.com/CharellKing/ela-lib/utils"
+
 	"github.com/spf13/viper"
 	"os"
 )

@@ -73,8 +73,14 @@ tasks:  # tasks which is executed orderly.
       -
         source_index: "sample_hello"
         target_index: "sample_hello"
+
+    slice_size: 5 # search with slice number which is the parallelism size, default is 20.
+    scroll_size: 5000 # scroll size which is used to scroll data from source index, default is 10000.
+    buffer_count: 3000 # buffer count which is used to buffer data to sync, default is 100000.
+    compare_parallelism: 5  # compare parallelism which is used to compare data in parallel index pairs, default is 20.
+    scroll_time: 10   # scroll time which is used to scroll data from source index, default is 10 minutes.
+    parallelism: 12   # parallelism which is used to sync data in parallel index pairs, default is 12.
     action: compare
-    force: true
 
   - name: task3
     source_es: es5
@@ -84,6 +90,5 @@ tasks:  # tasks which is executed orderly.
         source_index: "sample_hello"
         target_index: "sample_hello"
     action: sync_diff
-    force: true
 ```
 

@@ -48,12 +48,13 @@ tasks:  # tasks which is executed orderly.
     index_pattern: "test_.*" # index pattern which is used to filter index to sync, source index is same with target index.
     action: sync # index actions which can be assigned to 'sync', 'compare', 'sync_diff'. sync to insert data, compare to compare source index with target index, sync_diff to sync data between source index and target index.
     force: true       # force to cover the target index data with source index data and settings.
-    slice_size: 15 # search with slice number which is the parallelism size.
-    buffer_count: 3000 # buffer count which is used to buffer data to sync, default is 1000.
-    write_parallelism: 12 # write parallelism which is used to write data.
-    write_size: 5 # bulk data when reach the size, default is 5MB.
+    slice_size: 5 # search with slice number which is the parallelism size, default is 20.
+    scroll_size: 5000 # scroll size which is used to scroll data from source index, default is 10000.
+    buffer_count: 3000 # buffer count which is used to buffer data to sync, default is 100000.
+    write_parallelism: 5 # write parallelism which is used to write data, default is 10.
+    write_size: 5 # bulk data when reach the size, default is 5MB, default is 5.
     scroll_time: 10   # scroll time which is used to scroll data from source index, default is 10 minutes.
-    parallelism: 12   # parallelism which is used to sync data in parallel index pairs.
+    parallelism: 12   # parallelism which is used to sync data in parallel index pairs, default is 12.
     
 
   - name: task2

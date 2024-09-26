@@ -92,3 +92,7 @@ tasks:  # tasks which is executed orderly.
     action: sync_diff
 ```
 
+You can communicate more directly with author through the Knowledge Planet.
+
+<img src="./planet.jpg" alt="Knowledge Planet" width="300"/>
+

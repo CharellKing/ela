@@ -93,7 +93,6 @@ tasks:  # tasks which is executed orderly.
     action: copy_index
 
   - name: import-task
-    source_es: es5
     target_es: es6
     index_pattern: "test_*" # import test prefix index data from index data file.
     index_file_root: "C:/Users/andy/Documents" # index file root which is used to import index data.
@@ -105,7 +104,6 @@ tasks:  # tasks which is executed orderly.
 
   - name: export-task
     source_es: es5
-    target_es: es6
     index_pattern: "test_*" # export test prefix index data to file.
     index_file_root: "C:/Users/andy/Documents" # index file root which is used to export index data.
     index_pairs:

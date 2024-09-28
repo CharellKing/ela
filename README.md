@@ -38,7 +38,7 @@ elastics:             # elasticsearch clusters
     password: ""
 
 tasks:  # tasks which is executed orderly.
-  - name: task1 # task name
+  - name: full-sync-task # task name
     source_es: es5  # source elasticsearch cluster name which is defined in elastics config
     target_es: es8  # target elasticsearch cluster name which is defined in elastics config 
     index_pairs:    # index multiple pairs which is used to sync data from source index to target_index
@@ -57,39 +57,62 @@ tasks:  # tasks which is executed orderly.
     parallelism: 12   # parallelism which is used to sync data in parallel index pairs, default is 12.
     
 
-  - name: task2
+  - name: increment-sync-task
     source_es: es5
     target_es: es8
     index_pairs:
       - source_index: "sample_hello"
         target_index: "sample_hello"
-    action: sync
-    force: true
+    action: sync_diff
 
-  - name: task3
+  - name: compare-task
     source_es: es5
     target_es: es6
     index_pairs:
       -
         source_index: "sample_hello"
         target_index: "sample_hello"
-
-    slice_size: 5 # search with slice number which is the parallelism size, default is 20.
-    scroll_size: 5000 # scroll size which is used to scroll data from source index, default is 10000.
-    buffer_count: 3000 # buffer count which is used to buffer data to sync, default is 100000.
-    compare_parallelism: 5  # compare parallelism which is used to compare data in parallel index pairs, default is 20.
-    scroll_time: 10   # scroll time which is used to scroll data from source index, default is 10 minutes.
-    parallelism: 12   # parallelism which is used to sync data in parallel index pairs, default is 12.
     action: compare
 
-  - name: task3
+  - name: copy-index
     source_es: es5
     target_es: es6
     index_pairs:
       -
         source_index: "sample_hello"
         target_index: "sample_hello"
-    action: sync_diff
+    action: copy_index
+
+  - name: copy-index-task
+    source_es: es5
+    target_es: es6
+    index_pairs:
+      -
+        source_index: "sample_hello"
+        target_index: "sample_hello"
+    action: copy_index
+
+  - name: import-task
+    source_es: es5
+    target_es: es6
+    index_pattern: "test_*" # import test prefix index data from index data file.
+    index_file_root: "C:/Users/andy/Documents" # index file root which is used to import index data.
+    index_pairs:
+      -
+        index: "sample_hello" # import data from index file dir to sample_hello index.
+        index_file_dir: "C:/Users/andy/Documents/abc"
+    action: import
+
+  - name: export-task
+    source_es: es5
+    target_es: es6
+    index_pattern: "test_*" # export test prefix index data to file.
+    index_file_root: "C:/Users/andy/Documents" # index file root which is used to export index data.
+    index_pairs:
+      -
+        index: "sample_hello"  # export sample_hello index data to index file dir.
+        index_file_dir: "C:/Users/andy/Documents/abc"
+    action: export
 ```
 
 You can communicate more directly with author through the Knowledge Planet.

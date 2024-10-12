@@ -2,6 +2,15 @@
 
 Ela is a tool to migrator data between different elasticsearch with different versions. Elasticsearch above 5.x.x version is supported.
 
+## Features
+1. copy index settings and mappings from source index to target index.
+2. create index template from source index to target index.
+3. full sync data from source es to target es.
+4. incremental sync data from source es to target es.
+5. compare data between source es and target es.
+6. import data from index file to target es index.
+7. export index data from source es to index file.
+
 ## Usage
 
 ```bash
@@ -111,6 +120,16 @@ tasks:  # tasks which is executed orderly.
         index: "sample_hello"  # export sample_hello index data to index file dir.
         index_file_dir: "C:/Users/andy/Documents/abc"
     action: export
+
+  - name: create-template
+    source_es: es5
+    target_es: es6
+    action: create_template # create index template from source index to target index.
+    index_templates:
+      -
+        name: "template_sample_hello"
+        pattern: ["sample_*", "index_*"]  # index pattern which is used to filter index to create template.
+        order: 0
 ```
 
 You can communicate more directly with author through the Knowledge Planet.

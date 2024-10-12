@@ -3,7 +3,7 @@ module github.com/CharellKing/ela
 go 1.23.0
 
 require (
-	github.com/CharellKing/ela-lib v1.0.33
+	github.com/CharellKing/ela-lib v1.0.34
 	github.com/spf13/viper v1.19.0
 )
 

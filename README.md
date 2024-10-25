@@ -13,8 +13,14 @@ Ela is a tool to migrator data between different elasticsearch with different ve
 
 ## Usage
 
++ run tasks
 ```bash
-./ela ./config.yml
+./ela --config ./config.yml --tasks
+```
+
++ run gateway
+```bash
+./ela --config ./config.yml --gateway
 ```
 
 ## Config
@@ -130,9 +136,15 @@ tasks:  # tasks which is executed orderly.
         name: "template_sample_hello"
         pattern: ["sample_*", "index_*"]  # index pattern which is used to filter index to create template.
         order: 0
+
+gateway: # gateway for dual write both source es and target es.
+  gateway_address: "0.0.0.0:8080"  # gateway listen address
+  gateway_user: "user"             # gateway auth username
+  gateway_password: "12342"        # gateway auth password
+  source_es: es5                   # gateway source es
+  target_es: es8                   # gateway target es
+  master: es8                      # gateway master es, select between source es and target es.
+
 ```
 
-You can communicate more directly with author through the Knowledge Planet.
-
-<img src="./planet.jpg" alt="Knowledge Planet" width="300"/>
 

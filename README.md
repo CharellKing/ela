@@ -10,6 +10,7 @@ Ela is a tool to migrator data between different elasticsearch with different ve
 5. compare data between source es and target es.
 6. import data from index file to target es index.
 7. export index data from source es to index file.
+8. gateway for dual write data to source es and target es.
 
 ## Usage
 

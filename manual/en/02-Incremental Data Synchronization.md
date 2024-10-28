@@ -1,3 +1,5 @@
+# Incremental Data Synchronization
+
 ## Quick Start
 1. New Profile
 ```yaml

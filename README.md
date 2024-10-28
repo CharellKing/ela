@@ -18,8 +18,12 @@
 
 ## Manual
 
-You should read the articles in order to understand the use of the tools.
+You should read the following articles in order to understand how the whole scheme works.
 
-1. Elasticsearch overall data migration plan
+1. [Elasticsearch Data Migration Overall Solution](manual/en/01-Elasticsearch%20Data%20Migration%20Overall%20Solution.md)
+2. [Incremental Data Synchronization](manual/en/02-Incremental%20Data%20Synchronization.md)
+3. [Stock Data Migration](manual/en/03-Stock%20Data%20Migration.md)
+4. [Data Comparison](manual/en/04-Data%20Comparison.md)
+
 
 

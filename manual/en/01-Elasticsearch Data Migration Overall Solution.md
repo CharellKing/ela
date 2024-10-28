@@ -52,10 +52,11 @@ graph LR
 
 In the Ela solution, a tool is provided to batch migrate data in ES. It supports regular expression matching of indexes and data synchronization for specified indexes. It also supports multiple tasks, with tasks executed sequentially; data synchronization between different indexes within the same task can be performed concurrently.
 
-If you need to understand the details of stock data synchronization, you can refer to Stock Data Migration.
+If you need to understand the details of stock data synchronization, you can refer to [Stock Data Migration](03-Stock%20Data%20Migration.md).
 
 ### Data Comparison
 ```mermaid
+graph LR
     A(ES5) --> B((Ela Comparison Tool)) --> C(ES8)
 ```
 

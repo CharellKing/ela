@@ -44,7 +44,7 @@ tasks:
 2. Execute the command
 
 ```bash
-./ela --config ./config.yaml --tasks
+./ela --config ./config.yaml --task "compare-task"
 ```
 ## Detailed function explanation
 ### Configuration

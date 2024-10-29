@@ -81,7 +81,7 @@ gateway:
 ### 启动数据存量同步
 
 ```bash
-./ela --config ./config.yaml --tasks
+./ela --config ./config.yaml --task "stock-sync-task"
 ```
 
 ## 手册

@@ -44,7 +44,7 @@ tasks:
 2. Execute the command to perform data synchronization
 
 ```bash
-./ela --config ./config.yaml --tasks
+./ela --config ./config.yaml --task "stock-sync-task"
 ```
 
 ## Detailed function explanation

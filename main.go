@@ -25,7 +25,7 @@ func main() {
 	}
 
 	if cmd.ConfigFile == "" {
-		fmt.Println("Usage: go run main.go --config <config_path> [--gateway <gateway>] [--tasks <tasks>]")
+		fmt.Println("Usage: go run main.go --config <config_path> [--gateway] [--tasks] [--task <task name>]")
 		return
 	}
 

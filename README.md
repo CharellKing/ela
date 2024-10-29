@@ -80,7 +80,7 @@ gateway:
 ### Start the stock data migrate task
 
 ```bash
-./ela --config ./config.yaml --tasks
+./ela --config ./config.yaml --task "stock-sync-task"
 ```
 
 ## Manual

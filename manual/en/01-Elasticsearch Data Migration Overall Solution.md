@@ -33,9 +33,9 @@ The steps of the whole data migration are as follows. Take the data migration fr
 
 ```mermaid
 graph LR
-    A[业务服务] --> B((Ela Gateway))    
-    B --slave--> C(ES5)
-    B -.master-.-> D(ES8)
+    A[Business Service] --> B((Ela Gateway))    
+    B --master--> C(ES5)
+    B -.slave-.-> D(ES8)
 ```
 
 When it comes to incremental data migration, you need to use Ela Gateway. Ela Gateway forwards ES requests and makes the request parameters and return parameters of different versions of ES compatible. **For write requests, Ela Gateway synchronously forwards the request to the Master ES, and then asynchronously forwards the request to the Slave ES.** **For read requests, Ela Gateway synchronously forwards the request to the Master ES; for read requests, since no new data is generated, there is no need to request twice.** When starting incremental data synchronization, you need to set ES5 as the master and ES8 as the slave; because there is no stock data in ES8, reading ES5 directly will not affect the business.
@@ -74,7 +74,7 @@ If you need to understand the details of data comparison, you can refer to [Stoc
 
 ```mermaid
 flowchart LR
-    A[业务服务] --> B((Ela Gateway))
+    A[Business Service] --> B((Ela Gateway))
     B -.slave-.-> C(ES5)
     B --master--> D(ES8)
 ```
@@ -101,3 +101,5 @@ At this point, the entire data migration work is completed. This step is to remo
 ## Summary
 
 The entire process is relatively cumbersome and time-consuming. It is recommended to first practice in a test environment; after the entire process is smooth, then implement it in the production environment.
+
+

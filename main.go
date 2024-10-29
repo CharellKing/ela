@@ -68,6 +68,21 @@ func main() {
 			return
 		}
 		esProxy.Run()
+		return
+	}
+
+	if cmd.Task != "" {
+		taskMgr, err := task.NewTaskMgr(&cfg)
+		if err != nil {
+			utils.GetLogger(ctx).WithError(err).Error("create task manager")
+			return
+		}
+
+		if err := taskMgr.Run(ctx, cmd.Task); err != nil {
+			utils.GetLogger(ctx).WithError(err).Error("run task manager")
+			return
+		}
+		return
 	}
 
 	return

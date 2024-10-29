@@ -3,6 +3,7 @@
 Currently, there are some differences between various major versions of Elasticsearch in terms of interfaces and data storage. If Elasticsearch undergoes a major version upgrade, data migration and business program modifications are required. There is currently no open-source tool on the market that fully supports ES data migration. Ela is an open-source solution that allows for lossless data migration without stopping the business. Migration tool address: https://github.com/CharellKing/ela.
 
 ## Terminology
+
 Several terms are involved in this article, which need to be explained for the reader's understanding.
 
 **Stock Data**: Historical data that already exists in ES.
@@ -32,9 +33,9 @@ The steps of the whole data migration are as follows. Take the data migration fr
 
 ```mermaid
 graph LR
-    A[Business Service] --> B((Ela Gateway))
-    B --> C(ES5)
-    B -.-> D(ES8)
+    A[业务服务] --> B((Ela Gateway))    
+    B --slave--> C(ES5)
+    B -.master-.-> D(ES8)
 ```
 
 When it comes to incremental data migration, you need to use Ela Gateway. Ela Gateway forwards ES requests and makes the request parameters and return parameters of different versions of ES compatible. **For write requests, Ela Gateway synchronously forwards the request to the Master ES, and then asynchronously forwards the request to the Slave ES.** **For read requests, Ela Gateway synchronously forwards the request to the Master ES; for read requests, since no new data is generated, there is no need to request twice.** When starting incremental data synchronization, you need to set ES5 as the master and ES8 as the slave; because there is no stock data in ES8, reading ES5 directly will not affect the business.
@@ -55,6 +56,7 @@ In the Ela solution, a tool is provided to batch migrate data in ES. It supports
 If you need to understand the details of stock data synchronization, you can refer to [Stock Data Migration](03-Stock%20Data%20Migration.md).
 
 ### Data Comparison
+
 ```mermaid
 graph LR
     A(ES5) --> B((Ela Comparison Tool)) --> C(ES8)
@@ -69,20 +71,22 @@ To be more rigorous, you should set multiple data comparison time points; for ex
 If you need to understand the details of data comparison, you can refer to [Stock Data Migration](03-Stock%20Data%20Migration.md).
 
 ### Master-slave switching
+
 ```mermaid
 flowchart LR
-    A[Business Service] --> B((Ela Gateway))
-    B -.-> C(ES5)
-    B --> D(ES8)
+    A[业务服务] --> B((Ela Gateway))
+    B -.slave-.-> C(ES5)
+    B --master--> D(ES8)
 ```
+
 When there is no data difference between the two ESs, perform master-slave switching, switching the master to Target ES8 and the slave to ES5. Ensure there is no data difference between the two ESs before switching; otherwise, the timing is not mature, and you should not switch.
 
 Although there are differences in API interfaces between ES5 and ES8, Ela Gateway will convert the ES5 interface of the business side to the ES8 interface to request ES8. Therefore, no modifications are needed for the business service, and the switching work only needs to be done in Ela Gateway by changing one line of configuration. Although Ela Gateway provides compatibility, after this switch, you should mainly observe whether there are any abnormalities in the business service.
 
 If you need to understand master-slave switching, you can refer to [Incremental Data Synchronization](02-Incremental%20Data%20Synchronization.md).
 
-
 ### Data Comparison
+
 To be safe, it is best to perform a data comparison to check if there are any data differences between the Source ES and the Target ES. The comparison method and issue troubleshooting are the same as in the third step. For detailed steps on data comparison, you can refer to [Data Comparison](04-Data%20Comparison.md).
 
 ### Removing Ela Gateway
@@ -97,14 +101,3 @@ At this point, the entire data migration work is completed. This step is to remo
 ## Summary
 
 The entire process is relatively cumbersome and time-consuming. It is recommended to first practice in a test environment; after the entire process is smooth, then implement it in the production environment.
-
-
-
-
-
-
-
-
-
-
-

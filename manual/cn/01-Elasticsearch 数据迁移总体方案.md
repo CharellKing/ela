@@ -28,9 +28,9 @@
 
 ```mermaid
 graph LR
-    A[业务服务] --> B((Ela Gateway))
-    B --> C(ES5)
-    B -.-> D(ES8)
+    A[业务服务] --> B((Ela Gateway))    
+    B --slave--> C(ES5)
+    B -.master-.-> D(ES8)
 ```
 
 涉及到增量数据迁移，就需要使用 Ela Gateway 了，Ela Gateway 对 ES 的请求做了一层转发；并且将 ES 的不同版本的请求参数以及返回参数做了兼容。**对于写请求，Ela Gateway 将请求同步转发给 Master ES，之后将请求异步转发给 Slave ES。** **对于读请求，Ela Gateway 将请求同步转发给 Master ES；对读请求，由于不产生新数据，没有必要请求两次。**** 在开启增量数据同步的时候，需要将源 ES5 设置为主， 目标 ES8 设置为从；因为当前 ES8 里面还没有存量数据，对于读请求，直接读 ES5 对业务不会造成影响。
@@ -68,8 +68,8 @@ flowchart LR
 ```mermaid
 flowchart LR
     A[业务服务] --> B((Ela Gateway))
-    B -.-> C(ES5)
-    B --> D(ES8)
+    B -.slave-.-> C(ES5)
+    B --master--> D(ES8)
 ```
 
 待两个 ES 之间的数据不存在差异性，才进行主从切换，将主切换到目标 ES8，从切换到 ES5。一定是两个 ES 之间不存在数据差异性，否则时机不成熟，不要去切换。

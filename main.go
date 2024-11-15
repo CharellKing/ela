@@ -9,6 +9,7 @@ import (
 	"github.com/CharellKing/ela-lib/utils"
 	goflags "github.com/jessevdk/go-flags"
 	"log"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -78,7 +79,7 @@ func main() {
 			return
 		}
 
-		if err := taskMgr.Run(ctx, cmd.Task); err != nil {
+		if err := taskMgr.Run(ctx, strings.Fields(cmd.Task)...); err != nil {
 			utils.GetLogger(ctx).WithError(err).Error("run task manager")
 			return
 		}

@@ -3,8 +3,9 @@ module github.com/CharellKing/ela
 go 1.23.0
 
 require (
-	github.com/CharellKing/ela-lib v1.1.5
+	github.com/CharellKing/ela-lib v1.2.0
 	github.com/jessevdk/go-flags v1.6.1
+	github.com/samber/lo v1.44.0
 	github.com/spf13/viper v1.19.0
 )
 
@@ -46,7 +47,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
-	github.com/samber/lo v1.44.0 // indirect
 	github.com/segment-boneyard/go-map-path v1.0.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect

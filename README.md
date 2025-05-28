@@ -30,14 +30,14 @@ go build -o ela
 ```yaml
 level: "info"
 elastics:
-    source-es5:
+    es5:
         addresses:
             - "http://192.168.1.55:9200"
             - "http://192.168.1.56:9200"
             - "http://192.168.1.56:9200"
         user: "es-user"
         password: "123456"
-    source-es8:
+    es8:
         addresses:
             - "http://192.168.1.67:9200"
             - "http://192.168.1.68:9200"
@@ -84,13 +84,7 @@ gateway:
 ```
 
 ## Manual
-
-You should read the following articles in order to understand how the whole scheme works.
-
-1. [Elasticsearch Data Migration Overall Solution](manual/en/01-Elasticsearch%20Data%20Migration%20Overall%20Solution.md)
-2. [Incremental Data Synchronization](manual/en/02-Incremental%20Data%20Synchronization.md)
-3. [Stock Data Migration](manual/en/03-Stock%20Data%20Migration.md)
-4. [Data Comparison](manual/en/04-Data%20Comparison.md)
+Please refer to [Manual](https://ela-doc.memehub.info/docs/) for more details.
 
 
 

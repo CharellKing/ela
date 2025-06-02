@@ -83,8 +83,8 @@ gateway:
 ./ela --config ./config.yaml --task "stock-sync-task"
 ```
 
-## Manual
-Please refer to [Manual](https://ela-doc.memehub.info/docs/) for more details.
+## Official Website
+Please refer to [Official Website](https://memehub.info) for more details.
 
 
 

@@ -84,8 +84,8 @@ gateway:
 ./ela --config ./config.yaml --task "stock-sync-task"
 ```
 
-## 手册
+## 官网
 
-详情请查看 [Ela 手册](https://ela-doc.memehub.info/zh-cn/docs/)
+详情请查看 [官网](https://memehub.info)
 
 

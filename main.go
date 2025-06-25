@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"strings"
+
 	"github.com/CharellKing/ela-lib/config"
 	"github.com/CharellKing/ela-lib/service/gateway"
 	"github.com/CharellKing/ela-lib/service/task"
 	"github.com/CharellKing/ela-lib/utils"
 	goflags "github.com/jessevdk/go-flags"
 	"github.com/samber/lo"
-	"log"
-	"strings"
 
 	"github.com/spf13/viper"
 )
